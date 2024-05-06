@@ -164,7 +164,7 @@ async def list_players(ctx):
 async def generate_teams(ctx, arg=None):
     if ctx.author.voice and ctx.author.voice.channel:
         voice_channel = ctx.author.voice.channel
-        members = voice_channel.members
+        members = [member for member in voice_channel.members if not member.bot]
         member_names = [member.name for member in members]
 
         if arg and arg.isdigit():
@@ -189,7 +189,7 @@ async def generate_teams(ctx, arg=None):
         await ctx.send(embed=embed)
     else:
         await ctx.send("You need to be in a voice channel to use this command!")
-
+        
 async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=2):
     random_champions = random.sample(lol_champions, 2)
 
