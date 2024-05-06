@@ -38,6 +38,42 @@ bot = commands.Bot(command_prefix="/", intents=intents)
 # Dictionary to store assigned numbers to players
 player_numbers = {}
 
+class ArenaHelpView(View):
+    def __init__(self, ctx):
+        super().__init__()
+        self.ctx = ctx
+
+        # Create buttons for different commands
+        teams_button = Button(
+            label="Generate Teams",
+            style=discord.ButtonStyle.success,  # Green
+        )
+        teams_button.callback = self.generate_teams
+        self.add_item(teams_button)
+
+        champions_button = Button(
+            label="Generate Champions",
+            style=discord.ButtonStyle.primary,  # Yellow not available, so using primary (blue)
+        )
+        champions_button.callback = self.generate_champions
+        self.add_item(champions_button)
+
+        list_button = Button(
+            label="List All Players",
+            style=discord.ButtonStyle.blurple,  # Blue
+        )
+        list_button.callback = self.list_players
+        self.add_item(list_button)
+
+    async def generate_teams(self, interaction: discord.Interaction):
+        await generate_teams(self.ctx)
+
+    async def generate_champions(self, interaction: discord.Interaction):
+        await generate_champions(self.ctx)
+
+    async def list_players(self, interaction: discord.Interaction):
+        await list_players(self.ctx)
+
 class ChampionButtonView(View):
     def __init__(self, ctx, reroll_count=0, max_rerolls=2):
         super().__init__()
@@ -101,7 +137,8 @@ async def list_commands(ctx):
     embed.add_field(name="/arena list", value="List all players in the current voice channel", inline=False)
     embed.add_field(name="/arena champions", value="Generate random arena team", inline=False)
     embed.add_field(name="/arena help", value="Show this help message", inline=False)
-    await ctx.send(embed=embed)
+
+    await ctx.send(embed=embed, view=ArenaHelpView(ctx))
 
 async def list_players(ctx):
     if ctx.author.voice and ctx.author.voice.channel:
@@ -155,11 +192,8 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
     def clean_name(name):
         return name.lower().replace("'", "").replace(" ", "")
 
-    champion1_clean = clean_name(random_champions[0])
-    champion2_clean = clean_name(random_champions[1])
-
-    champion1_url = f"https://blitz.gg/lol/champions/{champion1_clean}/arena"
-    champion2_url = f"https://blitz.gg/lol/champions/{champion2_clean}/arena"
+    champion1_url = f"https://blitz.gg/lol/champions/{clean_name(random_champions[0])}/arena"
+    champion2_url = f"https://blitz.gg/lol/champions/{clean_name(random_champions[1])}/arena"
 
     champion1_hyperlink = f"[{random_champions[0]}]({champion1_url})"
     champion2_hyperlink = f"[{random_champions[1]}]({champion2_url})"
