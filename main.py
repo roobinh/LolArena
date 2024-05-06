@@ -46,33 +46,37 @@ class ArenaHelpView(View):
         # Create buttons for different commands
         teams_button = Button(
             label="Generate Teams",
-            style=discord.ButtonStyle.success,  # Green
+            style=discord.ButtonStyle.success  # Green
         )
         teams_button.callback = self.generate_teams
         self.add_item(teams_button)
 
         champions_button = Button(
             label="Generate Champions",
-            style=discord.ButtonStyle.primary,  # Yellow not available, so using primary (blue)
+            style=discord.ButtonStyle.primary  # Yellow not available, so using primary (blue)
         )
         champions_button.callback = self.generate_champions
         self.add_item(champions_button)
 
         list_button = Button(
             label="List All Players",
-            style=discord.ButtonStyle.blurple,  # Blue
+            style=discord.ButtonStyle.blurple  # Blue
         )
         list_button.callback = self.list_players
         self.add_item(list_button)
 
     async def generate_teams(self, interaction: discord.Interaction):
+        await interaction.response.defer()  # Acknowledge the interaction
         await generate_teams(self.ctx)
 
     async def generate_champions(self, interaction: discord.Interaction):
+        await interaction.response.defer()  # Acknowledge the interaction
         await generate_champions(self.ctx)
 
     async def list_players(self, interaction: discord.Interaction):
+        await interaction.response.defer()  # Acknowledge the interaction
         await list_players(self.ctx)
+
 
 class ChampionButtonView(View):
     def __init__(self, ctx, reroll_count=0, max_rerolls=2):
