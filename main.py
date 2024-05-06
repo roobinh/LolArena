@@ -2,8 +2,10 @@ import discord
 import random
 from dotenv import dotenv_values
 from discord.ext import commands
+from discord.ui import Button, View
+from discord.ext.commands import MissingPermissions
 
-# List of League of Legends champions (you can expand this list)
+# List of League of Legends champions
 lol_champions = [
     "Aatrox", "Ahri", "Akali", "Alistar", "Amumu", "Anivia", "Annie", "Aphelios", "Ashe", "Aurelion Sol",
     "Azir", "Bard", "Blitzcrank", "Brand", "Braum", "Caitlyn", "Camille", "Cassiopeia", "Cho'Gath",
@@ -36,11 +38,32 @@ bot = commands.Bot(command_prefix="/", intents=intents)
 # Dictionary to store assigned numbers to players
 player_numbers = {}
 
+class ChampionButtonView(View):
+    def __init__(self, ctx):
+        super().__init__()
+        self.ctx = ctx
+        button = Button(label="Generate Again", style=discord.ButtonStyle.primary)
+        button.callback = self.generate_again
+        self.add_item(button)
+
+    async def generate_again(self, interaction: discord.Interaction):
+        await generate_champions(self.ctx, interaction)
 
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user.name} ({bot.user.id})")
 
+
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("I don't have permission to do that. Please check my role permissions.")
+    elif isinstance(error, commands.CommandNotFound):
+        await ctx.send("Command not recognized. Please check the available commands using `/arena help`.")
+    elif isinstance(error, commands.CommandInvokeError):
+        await ctx.send("An error occurred while executing the command. Make sure I have the necessary permissions.")
+    else:
+        await ctx.send(f"An unexpected error occurred: {error}")
 
 @bot.hybrid_command(
     name="arena",
@@ -53,14 +76,13 @@ async def arena(ctx, arg: str = ""):
         await list_commands(ctx)  # Call list_commands when help is requested
     elif arg.lower() == "list":
         await list_players(ctx)  # Call list_players when list is requested
-    elif arg.lower() == "champions":
-        await generate_champions(ctx)  # Call generate_champions when champions is requested
+    elif arg.lower() in ["champions", "c"]:
+        await generate_champions(ctx)  # Call generate_champions when champions or c is requested
     else:
-        await generate_teams(ctx, arg)
+        await ctx.send("Unknown argument provided. Use `/arena help` for the correct syntax.")
 
 
 async def list_commands(ctx):
-    # Create an embed to display the command list
     embed = discord.Embed(
         title="Arena Commands",
         description="Here are the available commands for the arena:",
@@ -112,7 +134,6 @@ async def generate_teams(ctx, arg=None):
             solo = selected_players.pop().name
             teams.append([solo])
 
-        # Creating an embed to display the teams
         embed = discord.Embed(
             title="Teams for Arena",
             description="\n".join([f"Team {i+1}: {', '.join(team)}" for i, team in enumerate(teams)]),
@@ -123,18 +144,34 @@ async def generate_teams(ctx, arg=None):
         await ctx.send("You need to be in a voice channel to use this command!")
 
 
-async def generate_champions(ctx):
+async def generate_champions(ctx, interaction=None):
     # Generate two random champions
     random_champions = random.sample(lol_champions, 2)
 
-    # Create an embed to display the champions
+    # Create hyperlinks to blitz.gg for each champion
+    # Clean champion names by removing spaces and apostrophes
+    def clean_name(name):
+        return name.lower().replace("'", "").replace(" ", "")
+
+    champion1_clean = clean_name(random_champions[0])
+    champion2_clean = clean_name(random_champions[1])
+
+    # Create hyperlinks to blitz.gg for each champion
+    champion1_url = f"https://blitz.gg/lol/champions/{champion1_clean}/arena"
+    champion2_url = f"https://blitz.gg/lol/champions/{champion2_clean}/arena"
+
+    champion1_hyperlink = f"[{random_champions[0]}]({champion1_url})"
+    champion2_hyperlink = f"[{random_champions[1]}]({champion2_url})"
+
+    # Create an embed to display the champions with clickable links
     embed = discord.Embed(
         title="Random Champions",
-        description=f"{ctx.author.name}: {random_champions[0]}\nTeammate: {random_champions[1]}",
+        description=f"{ctx.author.name}: {champion1_hyperlink}\nTeammate: {champion2_hyperlink}",
         color=discord.Color.orange()
     )
-    await ctx.send(embed=embed)
+    if interaction:
+        await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx))
+    else:
+        await ctx.send(embed=embed, view=ChampionButtonView(ctx))
 
-
-# Replace 'YOUR_BOT_TOKEN' with your actual bot token
 bot.run(bot_token)
