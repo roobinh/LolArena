@@ -1,6 +1,28 @@
-import discord, random
+import discord
+import random
 from dotenv import dotenv_values
 from discord.ext import commands
+
+# List of League of Legends champions (you can expand this list)
+lol_champions = [
+    "Aatrox", "Ahri", "Akali", "Alistar", "Amumu", "Anivia", "Annie", "Aphelios", "Ashe", "Aurelion Sol",
+    "Azir", "Bard", "Blitzcrank", "Brand", "Braum", "Caitlyn", "Camille", "Cassiopeia", "Cho'Gath",
+    "Corki", "Darius", "Diana", "Dr. Mundo", "Draven", "Ekko", "Elise", "Evelynn", "Ezreal", "Fiddlesticks",
+    "Fiora", "Fizz", "Galio", "Gangplank", "Garen", "Gnar", "Gragas", "Graves", "Hecarim", "Heimerdinger",
+    "Illaoi", "Irelia", "Ivern", "Janna", "Jarvan IV", "Jax", "Jayce", "Jhin", "Jinx", "Kai'Sa",
+    "Kalista", "Karma", "Karthus", "Kassadin", "Katarina", "Kayle", "Kayn", "Kennen", "Kha'Zix", "Kindred",
+    "Kled", "Kog'Maw", "LeBlanc", "Lee Sin", "Leona", "Lillia", "Lissandra", "Lucian", "Lulu", "Lux",
+    "Malphite", "Malzahar", "Maokai", "Master Yi", "Miss Fortune", "Mordekaiser", "Morgana", "Nami", "Nasus", "Nautilus",
+    "Neeko", "Nidalee", "Nocturne", "Nunu & Willump", "Olaf", "Orianna", "Ornn", "Pantheon", "Poppy", "Pyke",
+    "Qiyana", "Quinn", "Rakan", "Rammus", "Rek'Sai", "Rell", "Renekton", "Rengar", "Riven", "Rumble",
+    "Ryze", "Samira", "Sejuani", "Senna", "Seraphine", "Sett", "Shaco", "Shen", "Shyvana", "Singed",
+    "Sion", "Sivir", "Skarner", "Sona", "Soraka", "Swain", "Sylas", "Syndra", "Tahm Kench", "Taliyah",
+    "Talon", "Taric", "Teemo", "Thresh", "Tristana", "Trundle", "Tryndamere", "Twisted Fate", "Twitch", "Udyr",
+    "Urgot", "Varus", "Vayne", "Veigar", "Vel'Koz", "Vi", "Viego", "Viktor", "Vladimir", "Volibear",
+    "Warwick", "Wukong", "Xayah", "Xerath", "Xin Zhao", "Yasuo", "Yone", "Yorick", "Yuumi", "Zac",
+    "Zed", "Ziggs", "Zilean", "Zoe", "Zyra","Gwen", "Akshan", "Vex", "Zeri", "Renata Glasc", "Bel'veth", 
+    "Nilah", "K'sante", "Milio", "Naafiri", "Briar", "Hwei"
+]
 
 env = dotenv_values('.env')
 bot_token = env.get('BOT_TOKEN')
@@ -31,6 +53,8 @@ async def arena(ctx, arg: str = ""):
         await list_commands(ctx)  # Call list_commands when help is requested
     elif arg.lower() == "list":
         await list_players(ctx)  # Call list_players when list is requested
+    elif arg.lower() == "champions":
+        await generate_champions(ctx)  # Call generate_champions when champions is requested
     else:
         await generate_teams(ctx, arg)
 
@@ -43,7 +67,9 @@ async def list_commands(ctx):
         color=discord.Color.blue()
     )
     embed.add_field(name="/arena", value="Generate teams based on players in the current voice channel", inline=False)
+    embed.add_field(name="/arena <numbers>", value="Generate teams based on players with corresponding numbers", inline=False)
     embed.add_field(name="/arena list", value="List all players in the current voice channel", inline=False)
+    embed.add_field(name="/arena champions", value="Generate random arena team", inline=False)
     embed.add_field(name="/arena help", value="Show this help message", inline=False)
     await ctx.send(embed=embed)
 
@@ -64,6 +90,7 @@ async def list_players(ctx):
         await ctx.send(embed=embed)
     else:
         await ctx.send("You need to be in a voice channel to use this command!")
+
 
 async def generate_teams(ctx, arg=None):
     if ctx.author.voice and ctx.author.voice.channel:
@@ -94,6 +121,20 @@ async def generate_teams(ctx, arg=None):
         await ctx.send(embed=embed)
     else:
         await ctx.send("You need to be in a voice channel to use this command!")
+
+
+async def generate_champions(ctx):
+    # Generate two random champions
+    random_champions = random.sample(lol_champions, 2)
+
+    # Create an embed to display the champions
+    embed = discord.Embed(
+        title="Random Champions",
+        description=f"{ctx.author.name}: {random_champions[0]}\nTeammate: {random_champions[1]}",
+        color=discord.Color.orange()
+    )
+    await ctx.send(embed=embed)
+
 
 # Replace 'YOUR_BOT_TOKEN' with your actual bot token
 bot.run(bot_token)
