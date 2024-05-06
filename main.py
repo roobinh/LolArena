@@ -39,15 +39,24 @@ bot = commands.Bot(command_prefix="/", intents=intents)
 player_numbers = {}
 
 class ChampionButtonView(View):
-    def __init__(self, ctx):
+    def __init__(self, ctx, reroll_count=0, max_rerolls=2):
         super().__init__()
         self.ctx = ctx
-        button = Button(label="Generate Again", style=discord.ButtonStyle.primary)
+        self.reroll_count = reroll_count
+        self.max_rerolls = max_rerolls
+
+        remaining_rerolls = max_rerolls - reroll_count
+        button = Button(
+            label=f"Reroll ({remaining_rerolls})",
+            style=discord.ButtonStyle.primary,
+            disabled=reroll_count >= max_rerolls
+        )
         button.callback = self.generate_again
         self.add_item(button)
 
     async def generate_again(self, interaction: discord.Interaction):
-        await generate_champions(self.ctx, interaction)
+        self.reroll_count += 1
+        await generate_champions(self.ctx, interaction, self.reroll_count, self.max_rerolls)
 
 @bot.event
 async def on_ready():
@@ -71,16 +80,15 @@ async def on_command_error(ctx, error):
 )
 async def arena(ctx, arg: str = ""):
     if not arg:
-        await generate_teams(ctx)  # Call generate_teams without any argument
+        await generate_teams(ctx)
     elif arg.lower() == "help":
-        await list_commands(ctx)  # Call list_commands when help is requested
+        await list_commands(ctx)
     elif arg.lower() == "list":
-        await list_players(ctx)  # Call list_players when list is requested
+        await list_players(ctx)
     elif arg.lower() in ["champions", "c"]:
-        await generate_champions(ctx)  # Call generate_champions when champions or c is requested
+        await generate_champions(ctx)
     else:
         await ctx.send("Unknown argument provided. Use `/arena help` for the correct syntax.")
-
 
 async def list_commands(ctx):
     embed = discord.Embed(
@@ -95,7 +103,6 @@ async def list_commands(ctx):
     embed.add_field(name="/arena help", value="Show this help message", inline=False)
     await ctx.send(embed=embed)
 
-
 async def list_players(ctx):
     if ctx.author.voice and ctx.author.voice.channel:
         voice_channel = ctx.author.voice.channel
@@ -106,13 +113,12 @@ async def list_players(ctx):
             color=discord.Color.blue()
         )
         for member in members:
-            if member.id not in player_numbers:  # Check if the player is new
-                player_numbers[member.id] = len(player_numbers) + 1  # Assign a new number
+            if member.id not in player_numbers:
+                player_numbers[member.id] = len(player_numbers) + 1
             embed.add_field(name=f"{player_numbers[member.id]}", value=member.name, inline=False)
         await ctx.send(embed=embed)
     else:
         await ctx.send("You need to be in a voice channel to use this command!")
-
 
 async def generate_teams(ctx, arg=None):
     if ctx.author.voice and ctx.author.voice.channel:
@@ -143,35 +149,32 @@ async def generate_teams(ctx, arg=None):
     else:
         await ctx.send("You need to be in a voice channel to use this command!")
 
-
-async def generate_champions(ctx, interaction=None):
-    # Generate two random champions
+async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=2):
     random_champions = random.sample(lol_champions, 2)
 
-    # Create hyperlinks to blitz.gg for each champion
-    # Clean champion names by removing spaces and apostrophes
     def clean_name(name):
         return name.lower().replace("'", "").replace(" ", "")
 
     champion1_clean = clean_name(random_champions[0])
     champion2_clean = clean_name(random_champions[1])
 
-    # Create hyperlinks to blitz.gg for each champion
     champion1_url = f"https://blitz.gg/lol/champions/{champion1_clean}/arena"
     champion2_url = f"https://blitz.gg/lol/champions/{champion2_clean}/arena"
 
     champion1_hyperlink = f"[{random_champions[0]}]({champion1_url})"
     champion2_hyperlink = f"[{random_champions[1]}]({champion2_url})"
 
-    # Create an embed to display the champions with clickable links
+    rolls_info = f"*{reroll_count} rolls used*" if reroll_count else ""
+
     embed = discord.Embed(
         title="Random Champions",
-        description=f"{ctx.author.name}: {champion1_hyperlink}\nTeammate: {champion2_hyperlink}",
+        description=f"{ctx.author.name}: {champion1_hyperlink}\nTeammate: {champion2_hyperlink}\n\n{rolls_info}",
         color=discord.Color.orange()
     )
+
     if interaction:
-        await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx))
+        await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx, reroll_count, max_rerolls))
     else:
-        await ctx.send(embed=embed, view=ChampionButtonView(ctx))
+        await ctx.send(embed=embed, view=ChampionButtonView(ctx, reroll_count, max_rerolls))
 
 bot.run(bot_token)
