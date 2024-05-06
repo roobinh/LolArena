@@ -60,7 +60,7 @@ class ArenaHelpView(View):
 
         list_button = Button(
             label="List All Players",
-            style=discord.ButtonStyle.blurple  # Blue
+            style=discord.ButtonStyle.secondary  # Blue
         )
         list_button.callback = self.list_players
         self.add_item(list_button)
