@@ -108,7 +108,7 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("I don't have permission to do that. Please check my role permissions.")
     elif isinstance(error, commands.CommandNotFound):
-        await ctx.send("Command not recognized. Please check the available commands using `/arena help`.")
+        pass
     elif isinstance(error, commands.CommandInvokeError):
         await ctx.send("An error occurred while executing the command. Make sure I have the necessary permissions.")
     else:
@@ -189,7 +189,7 @@ async def generate_teams(ctx, arg=None):
         await ctx.send(embed=embed)
     else:
         await ctx.send("You need to be in a voice channel to use this command!")
-        
+
 async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=2):
     random_champions = random.sample(lol_champions, 2)
 
