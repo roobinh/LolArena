@@ -6,15 +6,14 @@ This project is a Python-based Discord bot designed to help create randomized te
 
 ### Features
 - **Random Team Generation**: Create random teams from the members in a voice channel (even if not everyone in the voice channel is participating)
+<img src="https://github.com/roobinh/LolArena/blob/main/md-images/team%20generation.png" alt="Team Generation" width="300"/>
+
 - **Champion Assignment**: Assign 2 random champions to a team with reroll functionality.
+<img src="https://github.com/roobinh/LolArena/blob/main/md-images/champions.png" alt="Random Champions Generation" width="300"/>
+
 - **Command Buttons**: Utilize interactive buttons for ease of use.
 - **Help Menu**: Provide an embedded help menu listing available commands.
-
 <img src="https://github.com/roobinh/LolArena/blob/main/md-images/helpmenu.png" alt="Help Menu" width="400"/>
-
-<img src="https://github.com/roobinh/LolArena/blob/main/md-images/champions.png" alt="Random Champions Generation" width="200"/>
-
-<img src="https://github.com/roobinh/LolArena/blob/main/md-images/team%20generation.png" alt="Team Generation" width="200"/>
 
 ### Prerequisites
 1. Python 3.8+
