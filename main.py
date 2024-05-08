@@ -121,6 +121,8 @@ async def on_command_error(ctx, error):
 async def arena(ctx, arg: str = ""):
     if not arg:
         await generate_teams(ctx)
+    if arg.isdigit():
+        await generate_teams(ctx, arg)
     elif arg.lower() == "help":
         await list_commands(ctx)
     elif arg.lower() == "list":
