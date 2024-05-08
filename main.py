@@ -109,9 +109,14 @@ class ChampionButtonView(View):
         await generate_champions(self.ctx, interaction, self.reroll_count, self.max_rerolls)
 
     async def next_game(self, interaction: discord.Interaction):
-        # Reset any relevant game state here if needed
-        await interaction.response.defer()  # Acknowledge the interaction
-        await generate_champions(self.ctx)  # Start a new game
+        # Identify the user who clicked the button
+        clicked_user = interaction.user.name
+
+        # Acknowledge the interaction
+        await interaction.response.defer()
+
+        # Update the title to include the user's name
+        await generate_champions(self.ctx, None, 0, 2, clicked_user)
 
 def is_git_repo_up_to_date():
     try:
@@ -239,7 +244,7 @@ async def generate_teams(ctx, arg=None):
     else:
         await ctx.send("You need to be in a voice channel to use this command!")
 
-async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=2):
+async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=2, clicked_user=None):
     random_champions = random.sample(lol_champions, 2)
 
     def clean_name(name):
@@ -251,9 +256,10 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
     champion1_hyperlink = f"[{random_champions[0]}]({champion1_url})"
     champion2_hyperlink = f"[{random_champions[1]}]({champion2_url})"
 
+    author = clicked_user if clicked_user else ctx.author.name
     embed = discord.Embed(
         title="Random Champions",
-        description=f"{ctx.author.name}: {champion1_hyperlink}\nTeammate: {champion2_hyperlink}",
+        description=f"{author}: {champion1_hyperlink}\nTeammate: {champion2_hyperlink}",
         color=discord.Color.orange()
     )
 
