@@ -40,7 +40,7 @@ This project is a Python-based Discord bot designed to help create randomized te
 1. **Clone the Repository**  
    Clone or download this project to your local machine:
    ```bash
-   git clone <your-repo-url>
+   git clone [<your-repo-url>](https://github.com/roobinh/LolArena)
 
 2. **Install Dependencies**  
    Navigate to the project's root directory and install the required libraries directly:
