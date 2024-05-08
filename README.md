@@ -10,11 +10,11 @@ This project is a Python-based Discord bot designed to help create randomized te
 - **Command Buttons**: Utilize interactive buttons for ease of use.
 - **Help Menu**: Provide an embedded help menu listing available commands.
 
-![Help Menu](https://github.com/roobinh/LolArena/blob/main/md-images/helpmenu.png)
+<img src="https://github.com/roobinh/LolArena/blob/main/md-images/helpmenu.png" alt="Help Menu" width="400"/>
 
-![Random Champions Generation](https://github.com/roobinh/LolArena/blob/main/md-images/champions.png)
+<img src="https://github.com/roobinh/LolArena/blob/main/md-images/champions.png" alt="Random Champions Generation" width="200"/>
 
-![Team Generation](https://github.com/roobinh/LolArena/blob/main/md-images/team%20generation.png)
+<img src="https://github.com/roobinh/LolArena/blob/main/md-images/team%20generation.png" alt="Team Generation" width="200"/>
 
 ### Prerequisites
 1. Python 3.8+
