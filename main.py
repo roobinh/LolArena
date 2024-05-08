@@ -1,5 +1,6 @@
 import discord
 import random
+import subprocess
 from dotenv import dotenv_values
 from discord.ext import commands
 from discord.ui import Button, View
@@ -23,7 +24,7 @@ lol_champions = [
     "Urgot", "Varus", "Vayne", "Veigar", "Vel'Koz", "Vi", "Viego", "Viktor", "Vladimir", "Volibear",
     "Warwick", "Wukong", "Xayah", "Xerath", "Xin Zhao", "Yasuo", "Yone", "Yorick", "Yuumi", "Zac",
     "Zed", "Ziggs", "Zilean", "Zoe", "Zyra","Gwen", "Akshan", "Vex", "Zeri", "Renata Glasc", "Bel'veth", 
-    "Nilah", "K'sante", "Milio", "Naafiri", "Briar", "Hwei"
+    "Nilah", "K'sante", "Milio", "Naafiri", "Briar", "Hwei", "Smolder"
 ]
 
 env = dotenv_values('.env')
@@ -85,18 +86,64 @@ class ChampionButtonView(View):
         self.reroll_count = reroll_count
         self.max_rerolls = max_rerolls
 
+        # Reroll button
         remaining_rerolls = max_rerolls - reroll_count
-        button = Button(
+        reroll_button = Button(
             label=f"Reroll ({remaining_rerolls})",
             style=discord.ButtonStyle.primary,
             disabled=reroll_count >= max_rerolls
         )
-        button.callback = self.generate_again
-        self.add_item(button)
+        reroll_button.callback = self.generate_again
+        self.add_item(reroll_button)
+
+        # Next Game button
+        next_game_button = Button(
+            label="Next Game",
+            style=discord.ButtonStyle.success  # Green button
+        )
+        next_game_button.callback = self.next_game
+        self.add_item(next_game_button)
 
     async def generate_again(self, interaction: discord.Interaction):
         self.reroll_count += 1
         await generate_champions(self.ctx, interaction, self.reroll_count, self.max_rerolls)
+
+    async def next_game(self, interaction: discord.Interaction):
+        # Reset any relevant game state here if needed
+        await interaction.response.defer()  # Acknowledge the interaction
+        await generate_champions(self.ctx)  # Start a new game
+
+def is_git_repo_up_to_date():
+    try:
+        # Fetch the latest changes from the remote
+        subprocess.run(["git", "fetch"], check=True)
+
+        # Check the difference between the local branch and the remote branch
+        local_branch = subprocess.run(
+            ["git", "rev-parse", "@"],
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True
+        ).stdout.strip()
+        
+        remote_branch = subprocess.run(
+            ["git", "rev-parse", "@{u}"],
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True
+        ).stdout.strip()
+        
+        # Check for differences between local and remote branches
+        if local_branch == remote_branch:
+            print("Your local branch is up to date.")
+        else:
+            print("Your local branch is not up to date with the remote branch.")
+            # Optionally, provide instructions for updating
+            print("Consider pulling the latest changes with 'git pull'.")
+    except subprocess.CalledProcessError as e:
+        print("Verifying Git Status: Error while checking repository status:", e)
+    except Exception as e:
+        print("Verifying Git Status: An unexpected error occurred, probably because git is not installed.", e)
 
 @bot.event
 async def on_ready():
@@ -217,4 +264,5 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
     else:
         await ctx.send(embed=embed, view=ChampionButtonView(ctx, reroll_count, max_rerolls))
 
+is_git_repo_up_to_date()
 bot.run(bot_token)
