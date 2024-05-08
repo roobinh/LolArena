@@ -251,11 +251,9 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
     champion1_hyperlink = f"[{random_champions[0]}]({champion1_url})"
     champion2_hyperlink = f"[{random_champions[1]}]({champion2_url})"
 
-    rolls_info = f"*{reroll_count} rolls used*" if reroll_count else ""
-
     embed = discord.Embed(
         title="Random Champions",
-        description=f"{ctx.author.name}: {champion1_hyperlink}\nTeammate: {champion2_hyperlink}\n\n{rolls_info}",
+        description=f"{ctx.author.name}: {champion1_hyperlink}\nTeammate: {champion2_hyperlink}",
         color=discord.Color.orange()
     )
 
