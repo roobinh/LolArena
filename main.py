@@ -95,7 +95,7 @@ class AddChampionView(View):
 
         # Create the "Add Champion" button and set its callback
         add_button = Button(
-            label="Add a champion",
+            label="Add",
             style=discord.ButtonStyle.success
         )
         add_button.callback = self.add_champion_callback
@@ -292,7 +292,7 @@ class RemoveChampionView(View):
         self.user_id = user_id
 
         # Create the "Remove Champion" button and set its callback
-        remove_button = Button(label="Remove a champion", style=discord.ButtonStyle.danger)
+        remove_button = Button(label="Remove", style=discord.ButtonStyle.danger)
         remove_button.callback = self.remove_champion_callback
         self.add_item(remove_button)
 
