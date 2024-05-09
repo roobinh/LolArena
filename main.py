@@ -49,6 +49,8 @@ class AddChampionModal(Modal):
     async def on_submit(self, interaction: discord.Interaction):
         # Retrieve the entered champion name
         entered_champion = self.champion_input.value.strip()
+        entered_champion = next((champion for champion in lol_champions if champion.lower() == entered_champion.lower()), entered_champion)
+        print(f'entered_champion = {entered_champion}')
 
         # Validate the entered champion against the predefined list
         if entered_champion not in lol_champions:
@@ -272,7 +274,8 @@ class RemoveChampionModal(Modal):
     async def on_submit(self, interaction: discord.Interaction):
         # Retrieve the entered champion name
         entered_champion = self.champion_input.value.strip()
-
+        entered_champion = next((champion for champion in lol_champions if champion.lower() == entered_champion.lower()), entered_champion)
+        
         # Load existing wins data
         champion_wins = load_champion_wins()
 
@@ -347,7 +350,14 @@ async def arena(ctx, mode: str = "", username: str = ""):
         else:
             await generate_champions(ctx)
     elif mode in ["wins", "win", "w"]:
-        await list_wins(ctx)
+        if username:
+            target_user = discord.utils.get(ctx.guild.members, name=username)
+            if target_user:
+                await list_wins(ctx, target_user)
+            else:
+                await ctx.send(f"User **{username}** not found.")
+        else:
+            await list_wins(ctx)
     elif mode in ["players", "player"]:
         await list_players(ctx)
     else:
@@ -369,35 +379,37 @@ def save_champion_wins(data):
     with open(wins_file, "w") as file:
         json.dump(data, file, indent=4)
 
-async def list_wins(ctx):
+async def list_wins(ctx, target_user=None):
+    if target_user:
+        user_key = str(target_user.id)
+        user_name = target_user.name
+    else:
+        user_key = str(ctx.author.id)
+        user_name = ctx.author.name
+
     # Load the current wins data
     champion_wins = load_champion_wins()
 
-    # Retrieve the user's win data
-    user_key = str(ctx.author.id)
     if user_key in champion_wins and "wins" in champion_wins[user_key]:
         wins = champion_wins[user_key]["wins"]
         if wins:
-            # Format the win list using bullet points and additional styling
             wins_str = "\n".join([f"• **{win['champion']}** (_{win['timestamp']}_)" for win in wins])
         else:
             wins_str = "The win list is currently empty 🥲"
     else:
         wins_str = "The win list is currently empty 🥲"
 
-    # Create an embed with the updated, styled win list
     embed = discord.Embed(
-        title=f"{ctx.author.name}'s Win List 👑",
+        title=f"{user_name}'s Win List 👑",
         description=wins_str,
         color=discord.Color.green()
     )
 
-    # Add the new "Remove Champion" button with a modal and "Add Champion" button
+    # Add Remove and Add Champion buttons
     view = View()
-    view.add_item(RemoveChampionView(ctx.author.id).children[0])  # Get the Remove button
-    view.add_item(AddChampionView(ctx.author.id).children[0])  # Get the Add button
+    view.add_item(RemoveChampionView(user_key).children[0])  # Get the Remove button
+    view.add_item(AddChampionView(user_key).children[0])  # Get the Add button
 
-    # Send the embed with the view
     await ctx.send(embed=embed, view=view)
 
 
