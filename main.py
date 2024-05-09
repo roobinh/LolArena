@@ -338,8 +338,8 @@ async def on_command_error(ctx, error):
 )
 async def arena(ctx, mode: str = "", username: str = ""):
     mode = mode.lower()
-    if mode == "teams":
-        await generate_teams(ctx)
+    if mode == "help":
+        await list_commands(ctx)
     elif mode in ["champions", "champion", "c"]:
         if username:
             target_user = discord.utils.get(ctx.guild.members, name=username)
@@ -358,10 +358,13 @@ async def arena(ctx, mode: str = "", username: str = ""):
                 await ctx.send(f"User **{username}** not found.")
         else:
             await list_wins(ctx)
-    elif mode in ["players", "player"]:
+    elif mode in ["list", "players", "player"]:
         await list_players(ctx)
     else:
-        await list_commands(ctx)
+        if mode.isdigit():
+            await generate_teams(ctx, mode)
+        else:
+            await generate_teams(ctx)
 
 
 # Helper function to load or initialize the wins data
@@ -420,23 +423,18 @@ async def list_commands(ctx):
         color=discord.Color.blue()
     )
     embed.add_field(
-        name="/arena",
-        value="Generate teams based on players in the current voice channel or with specified numbers.",
+        name="/arena [user numbers]",
+        value="Generate random teams based on players in the current voice channel, or specified numbers (see /arena players).",
         inline=False
     )
     embed.add_field(
-        name="/arena <numbers>",
-        value="Generate teams based on players with corresponding numbers.",
+        name="/arena champions [username]",
+        value="Generate random champions for yourself or with specified teammate.",
         inline=False
     )
     embed.add_field(
-        name="/arena champions/c",
-        value="Generate random champions for the arena.",
-        inline=False
-    )
-    embed.add_field(
-        name="/arena wins/w",
-        value="Show the win list of the command issuer.",
+        name="/arena wins [username]",
+        value="Show the win list of the command issuer or a specified user.",
         inline=False
     )
     embed.add_field(
@@ -446,11 +444,11 @@ async def list_commands(ctx):
     )
     embed.add_field(
         name="/arena help",
-        value="Show this help message.",
+        value="Show this help message with detailed information about all commands.",
         inline=False
     )
 
-    # Create a View with the buttons and attach it to the embed
+    # Create a View with buttons and attach it to the embed
     await ctx.send(embed=embed, view=ArenaHelpView(ctx))
 
 
@@ -482,21 +480,24 @@ async def generate_teams(ctx, arg=None):
         else:
             selected_players = members
 
-        random.shuffle(selected_players)
-        teams = []
-        while len(selected_players) > 1:
-            team = [selected_players.pop().name, selected_players.pop().name]
-            teams.append(team)
-        if selected_players:
-            solo = selected_players.pop().name
-            teams.append([solo])
+        if len(selected_players) == 0:
+            await ctx.send("No players match these numbers. Check `/arena list` for more information.")
+        else:
+            random.shuffle(selected_players)
+            teams = []
+            while len(selected_players) > 1:
+                team = [selected_players.pop().name, selected_players.pop().name]
+                teams.append(team)
+            if selected_players:
+                solo = selected_players.pop().name
+                teams.append([solo])
 
-        embed = discord.Embed(
-            title="Teams for Arena",
-            description="\n".join([f"Team {i+1}: {', '.join(team)}" for i, team in enumerate(teams)]),
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=embed)
+            embed = discord.Embed(
+                title="Teams for Arena",
+                description="\n".join([f"Team {i+1}: {', '.join(team)}" for i, team in enumerate(teams)]),
+                color=discord.Color.green()
+            )
+            await ctx.send(embed=embed)
     else:
         await ctx.send("You need to be in a voice channel to use this command!")
 
