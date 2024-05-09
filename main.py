@@ -37,8 +37,67 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="/", intents=intents)
 
+wins_file = "champion_wins.json"
 # Dictionary to store assigned numbers to players
 player_numbers = {}
+
+# Helper function to load or initialize the wins data
+def load_champion_wins():
+    if os.path.exists(wins_file):
+        try:
+            with open(wins_file, "r") as file:
+                return json.load(file)
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+# Helper function to save the wins data
+def save_champion_wins(data):
+    with open(wins_file, "w") as file:
+        json.dump(data, file, indent=4)
+
+class RemoveChampionView(View):
+    def __init__(self, user_id, champions, interaction):
+        super().__init__()
+        self.user_id = user_id
+        self.interaction = interaction
+
+        for champion in champions:
+            champion_button = Button(
+                label=champion,
+                style=discord.ButtonStyle.danger,
+                custom_id=champion  # Setting the champion name as the custom_id
+            )
+            champion_button.callback = self.remove_champion
+            self.add_item(champion_button)
+
+    async def remove_champion(self, interaction: discord.Interaction):
+        # Retrieve the clicked champion via the `custom_id`
+        clicked_champion = interaction.data['custom_id']
+
+        # Load the current wins data
+        champion_wins = load_champion_wins()
+
+        # Remove the selected champion from the user's list
+        user_key = str(self.user_id)
+        if user_key in champion_wins:
+            champion_wins[user_key]["wins"] = [
+                win for win in champion_wins[user_key]["wins"] if win["champion"] != clicked_champion
+            ]
+            save_champion_wins(champion_wins)
+
+        # Prepare a confirmation message
+        message = f"**{clicked_champion}** has been removed from your win-list."
+
+        # Send a new embed with the confirmation
+        embed = discord.Embed(
+            title="Champion Removed",
+            description=message,
+            color=discord.Color.red()
+        )
+
+        # Update the interaction with the confirmation message
+        await interaction.response.edit_message(embed=embed, view=None)
 
 class ArenaHelpView(View):
     def __init__(self, ctx):
@@ -79,12 +138,43 @@ class ArenaHelpView(View):
         await interaction.response.defer()  # Acknowledge the interaction
         await list_players(self.ctx)
 
+class ShowWinsView(View):
+    def __init__(self, user_id):
+        super().__init__()
+        self.user_id = user_id
+        show_wins_button = Button(
+            label="Show wins",
+            style=discord.ButtonStyle.primary  # Blue
+        )
+        show_wins_button.callback = self.show_wins
+        self.add_item(show_wins_button)
+
+    async def show_wins(self, interaction: discord.Interaction):
+        # Load the current wins data
+        champion_wins = load_champion_wins()
+        user_key = str(self.user_id)
+
+        if user_key in champion_wins and "wins" in champion_wins[user_key]:
+            wins = champion_wins[user_key]["wins"]
+            wins_str = "\n".join([f"{win['champion']} ({win['timestamp']})" for win in wins])
+        else:
+            wins_str = "No wins recorded."
+
+        # Create the win list embed with a green color
+        embed = discord.Embed(
+            title=f"Win List 👑",
+            description=wins_str,
+            color=discord.Color.green()
+        )
+
+        await interaction.response.send_message(embed=embed)
+
 
 class ChampionButtonView(View):
     def __init__(self, ctx, champions, reroll_count=0, max_rerolls=2):
         super().__init__()
         self.ctx = ctx
-        self.champions = champions  # Store the selected champions for easy access later
+        self.champions = champions
         self.reroll_count = reroll_count
         self.max_rerolls = max_rerolls
 
@@ -106,7 +196,7 @@ class ChampionButtonView(View):
         next_game_button.callback = self.next_game
         self.add_item(next_game_button)
 
-        # "Game Win 👑" button
+        # Game Win button
         game_win_button = Button(
             label="Game Win 👑",
             style=discord.ButtonStyle.secondary
@@ -138,20 +228,11 @@ class ChampionButtonView(View):
         else:
             winner_champion = self.champions[1]
 
-        # Get the current timestamp in the "DD-MM-YYYY HH:MM" format
+        # Get the current timestamp
         win_timestamp = datetime.now().strftime("%d-%m-%Y %H:%M")
 
-        # Read existing wins data from the JSON file or initialize a new structure
-        json_file = "champion_wins.json"
-        if os.path.exists(json_file):
-            try:
-                with open(json_file, "r") as file:
-                    champion_wins = json.load(file)
-            except json.JSONDecodeError:
-                # Handle empty or corrupted JSON file
-                champion_wins = {}
-        else:
-            champion_wins = {}
+        # Load the existing wins data
+        champion_wins = load_champion_wins()
 
         # Update or create the entry for the clicked user, ensuring the 'wins' key always exists
         user_key = str(clicked_user.id)
@@ -160,38 +241,31 @@ class ChampionButtonView(View):
         elif "wins" not in champion_wins[user_key]:
             champion_wins[user_key]["wins"] = []
 
-        # Check if the champion already exists in the user's wins
+        # Check if the champion is already in the user's wins
         existing_champions = [win["champion"] for win in champion_wins[user_key]["wins"]]
         if winner_champion not in existing_champions:
-            # Add the new win to the user's list only if it doesn't already exist
+            # Add the new win only if it doesn't already exist
             champion_wins[user_key]["wins"].append({
                 "champion": winner_champion,
                 "timestamp": win_timestamp
             })
+            save_champion_wins(champion_wins)
 
-            # Write the updated data back to the JSON file
-            with open(json_file, "w") as file:
-                json.dump(champion_wins, file, indent=4)
-
-            # Prepare the message to indicate the champion was added
-            status_message = f"**{winner_champion}** successfully added to the win-list."
+            status_message = f"**{winner_champion}** successfully added to your win-list."
         else:
-            # Prepare the message to indicate the champion was already in the list
             status_message = f"**{winner_champion}** is already in your win-list."
 
-        # Retrieve and sort the user's list of wins by timestamp
-        all_wins = sorted(champion_wins[user_key]["wins"], key=lambda win: win["timestamp"])
-        all_wins_str = "\n".join([f"{win['champion']} ({win['timestamp']})" for win in all_wins])
-
-        # Prepare the full message
-        message = (
-            f"{status_message}\n\n"
-            f"*Currently in the list:*\n{all_wins_str}"
+        # Create a simple confirmation embed
+        embed = discord.Embed(
+            title="Champion Win Added",
+            description=status_message,
+            color=discord.Color.green()
         )
 
-        # Send an ephemeral message visible only to the user who clicked the button
-        await interaction.response.send_message(content=message, ephemeral=True)
-
+        # Add the "Show Wins" button using a separate view
+        await interaction.response.send_message(
+            embed=embed, view=ShowWinsView(clicked_user.id), ephemeral=True
+        )
 
 
 def is_git_repo_up_to_date():
@@ -253,12 +327,71 @@ async def arena(ctx, arg: str = ""):
         await generate_teams(ctx, arg)
     elif arg.lower() == "help":
         await list_commands(ctx)
-    elif arg.lower() == "list":
+    elif arg.lower() in ["wins", "win", "w", "list"]:
+        await list_wins(ctx)
+    elif arg.lower() == ["users", "user", "players", "player"]:
         await list_players(ctx)
     elif arg.lower() in ["champions", "c"]:
         await generate_champions(ctx)
     else:
         await ctx.send("Unknown argument provided. Use `/arena help` for the correct syntax.")
+
+async def list_wins(ctx):
+    # Load the current wins data
+    champion_wins = load_champion_wins()
+
+    # Retrieve the user's win data
+    user_key = str(ctx.author.id)
+    if user_key in champion_wins and "wins" in champion_wins[user_key]:
+        wins = champion_wins[user_key]["wins"]
+        if wins:
+            # Format the win list using bullet points and additional styling
+            wins_str = "\n".join([f"• **{win['champion']}** (_{win['timestamp']}_)" for win in wins])
+            champions = [win["champion"] for win in wins]
+        else:
+            wins_str = "The win list is currently empty 🥲"
+            champions = []
+    else:
+        wins_str = "The win list is currently empty 🥲"
+        champions = []
+
+    # Create an embed with the updated, styled win list
+    embed = discord.Embed(
+        title=f"{ctx.author.name}'s Win List 👑",
+        description=wins_str,
+        color=discord.Color.green()
+    )
+
+    # Add a "Remove Champion" button if there are champions to remove
+    if champions:
+        view = View()
+        remove_button = Button(
+            label="Remove a champion",
+            style=discord.ButtonStyle.danger
+        )
+
+        async def remove_champion_menu(interaction: discord.Interaction):
+            # Create an embed and view for the removal menu
+            removal_embed = discord.Embed(
+                title="Remove a Champion",
+                description="Choose a champion to remove from your list.",
+                color=discord.Color.red()
+            )
+            removal_view = RemoveChampionView(interaction.user.id, champions, interaction)
+
+            # Send the removal options directly in the channel but only visible to the user
+            await interaction.response.send_message(embed=removal_embed, view=removal_view, ephemeral=True)
+
+        # Set the callback for the button
+        remove_button.callback = remove_champion_menu
+        view.add_item(remove_button)
+    else:
+        view = None
+
+    # Send the embed with or without the view
+    await ctx.send(embed=embed, view=view)
+
+
 
 async def list_commands(ctx):
     embed = discord.Embed(
@@ -266,13 +399,40 @@ async def list_commands(ctx):
         description="Here are the available commands for the arena:",
         color=discord.Color.blue()
     )
-    embed.add_field(name="/arena", value="Generate teams based on players in the current voice channel", inline=False)
-    embed.add_field(name="/arena <numbers>", value="Generate teams based on players with corresponding numbers", inline=False)
-    embed.add_field(name="/arena list", value="List all players in the current voice channel", inline=False)
-    embed.add_field(name="/arena champions", value="Generate random arena team", inline=False)
-    embed.add_field(name="/arena help", value="Show this help message", inline=False)
+    embed.add_field(
+        name="/arena",
+        value="Generate teams based on players in the current voice channel or with specified numbers.",
+        inline=False
+    )
+    embed.add_field(
+        name="/arena <numbers>",
+        value="Generate teams based on players with corresponding numbers.",
+        inline=False
+    )
+    embed.add_field(
+        name="/arena champions/c",
+        value="Generate random champions for the arena.",
+        inline=False
+    )
+    embed.add_field(
+        name="/arena wins/w",
+        value="Show the win list of the command issuer.",
+        inline=False
+    )
+    embed.add_field(
+        name="/arena players",
+        value="List all players in the current voice channel.",
+        inline=False
+    )
+    embed.add_field(
+        name="/arena help",
+        value="Show this help message.",
+        inline=False
+    )
 
+    # Create a View with the buttons and attach it to the embed
     await ctx.send(embed=embed, view=ArenaHelpView(ctx))
+
 
 async def list_players(ctx):
     if ctx.author.voice and ctx.author.voice.channel:

@@ -3,8 +3,24 @@
         "name": "tehrubin",
         "wins": [
             {
-                "champion": "Lee Sin",
-                "timestamp": "09-05-2024 20:44"
+                "champion": "Brand",
+                "timestamp": "09-05-2024 21:07"
+            },
+            {
+                "champion": "Quinn",
+                "timestamp": "09-05-2024 21:09"
+            },
+            {
+                "champion": "Annie",
+                "timestamp": "09-05-2024 21:12"
+            },
+            {
+                "champion": "Ezreal",
+                "timestamp": "09-05-2024 21:15"
+            },
+            {
+                "champion": "K'sante",
+                "timestamp": "09-05-2024 21:21"
             }
         ]
     }
