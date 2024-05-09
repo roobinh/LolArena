@@ -1,10 +1,9 @@
-import discord
-import random
-import subprocess
+import os, json, random, discord, subprocess
 from dotenv import dotenv_values
 from discord.ext import commands
 from discord.ui import Button, View
 from discord.ext.commands import MissingPermissions
+from datetime import datetime
 
 # List of League of Legends champions
 lol_champions = [
@@ -29,6 +28,8 @@ lol_champions = [
 
 env = dotenv_values('.env')
 bot_token = env.get('BOT_TOKEN')
+bot_token = env.get('BOT_TOKEN_DEV')
+print(bot_token)
 
 intents = discord.Intents.all()
 intents.voice_states = True
@@ -80,9 +81,10 @@ class ArenaHelpView(View):
 
 
 class ChampionButtonView(View):
-    def __init__(self, ctx, reroll_count=0, max_rerolls=2):
+    def __init__(self, ctx, champions, reroll_count=0, max_rerolls=2):
         super().__init__()
         self.ctx = ctx
+        self.champions = champions  # Store the selected champions for easy access later
         self.reroll_count = reroll_count
         self.max_rerolls = max_rerolls
 
@@ -99,10 +101,18 @@ class ChampionButtonView(View):
         # Next Game button
         next_game_button = Button(
             label="Next Game",
-            style=discord.ButtonStyle.success  # Green button
+            style=discord.ButtonStyle.success
         )
         next_game_button.callback = self.next_game
         self.add_item(next_game_button)
+
+        # "Game Win 👑" button
+        game_win_button = Button(
+            label="Game Win 👑",
+            style=discord.ButtonStyle.secondary
+        )
+        game_win_button.callback = self.game_win
+        self.add_item(game_win_button)
 
     async def generate_again(self, interaction: discord.Interaction):
         self.reroll_count += 1
@@ -117,6 +127,72 @@ class ChampionButtonView(View):
 
         # Update the title to include the user's name
         await generate_champions(self.ctx, None, 0, 2, clicked_user)
+
+    async def game_win(self, interaction: discord.Interaction):
+        clicked_user = interaction.user
+        author = self.ctx.author
+
+        # Determine which champion to attribute based on the clicked user
+        if clicked_user == author:
+            winner_champion = self.champions[0]
+        else:
+            winner_champion = self.champions[1]
+
+        # Get the current timestamp in the "DD-MM-YYYY HH:MM" format
+        win_timestamp = datetime.now().strftime("%d-%m-%Y %H:%M")
+
+        # Read existing wins data from the JSON file or initialize a new structure
+        json_file = "champion_wins.json"
+        if os.path.exists(json_file):
+            try:
+                with open(json_file, "r") as file:
+                    champion_wins = json.load(file)
+            except json.JSONDecodeError:
+                # Handle empty or corrupted JSON file
+                champion_wins = {}
+        else:
+            champion_wins = {}
+
+        # Update or create the entry for the clicked user, ensuring the 'wins' key always exists
+        user_key = str(clicked_user.id)
+        if user_key not in champion_wins:
+            champion_wins[user_key] = {"name": clicked_user.name, "wins": []}
+        elif "wins" not in champion_wins[user_key]:
+            champion_wins[user_key]["wins"] = []
+
+        # Check if the champion already exists in the user's wins
+        existing_champions = [win["champion"] for win in champion_wins[user_key]["wins"]]
+        if winner_champion not in existing_champions:
+            # Add the new win to the user's list only if it doesn't already exist
+            champion_wins[user_key]["wins"].append({
+                "champion": winner_champion,
+                "timestamp": win_timestamp
+            })
+
+            # Write the updated data back to the JSON file
+            with open(json_file, "w") as file:
+                json.dump(champion_wins, file, indent=4)
+
+            # Prepare the message to indicate the champion was added
+            status_message = f"**{winner_champion}** successfully added to the win-list."
+        else:
+            # Prepare the message to indicate the champion was already in the list
+            status_message = f"**{winner_champion}** is already in your win-list."
+
+        # Retrieve and sort the user's list of wins by timestamp
+        all_wins = sorted(champion_wins[user_key]["wins"], key=lambda win: win["timestamp"])
+        all_wins_str = "\n".join([f"{win['champion']} ({win['timestamp']})" for win in all_wins])
+
+        # Prepare the full message
+        message = (
+            f"{status_message}\n\n"
+            f"*Currently in the list:*\n{all_wins_str}"
+        )
+
+        # Send an ephemeral message visible only to the user who clicked the button
+        await interaction.response.send_message(content=message, ephemeral=True)
+
+
 
 def is_git_repo_up_to_date():
     try:
@@ -264,9 +340,9 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
     )
 
     if interaction:
-        await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx, reroll_count, max_rerolls))
+        await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx, random_champions, reroll_count, max_rerolls))
     else:
-        await ctx.send(embed=embed, view=ChampionButtonView(ctx, reroll_count, max_rerolls))
+        await ctx.send(embed=embed, view=ChampionButtonView(ctx, random_champions, reroll_count, max_rerolls))
 
 is_git_repo_up_to_date()
 bot.run(bot_token)
