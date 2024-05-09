@@ -27,8 +27,7 @@ lol_champions = [
 ]
 
 env = dotenv_values('.env')
-bot_token = env.get('BOT_TOKEN')
-bot_token = env.get('BOT_TOKEN_DEV')
+bot_token = env.get('BOT_TOKEN_DEV') or env.get('BOT_TOKEN')
 
 intents = discord.Intents.all()
 intents.voice_states = True
