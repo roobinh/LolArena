@@ -1,7 +1,7 @@
 import os, json, random, discord, subprocess
 from dotenv import dotenv_values
 from discord.ext import commands
-from discord.ui import Button, View
+from discord.ui import Button, View, Modal, TextInput
 from discord.ext.commands import MissingPermissions
 from datetime import datetime
 
@@ -29,7 +29,6 @@ lol_champions = [
 env = dotenv_values('.env')
 bot_token = env.get('BOT_TOKEN')
 bot_token = env.get('BOT_TOKEN_DEV')
-print(bot_token)
 
 intents = discord.Intents.all()
 intents.voice_states = True
@@ -39,6 +38,72 @@ bot = commands.Bot(command_prefix="/", intents=intents)
 # Dictionary to store assigned numbers to players
 player_numbers = {}
 wins_file = "champion_wins.json"
+
+class AddChampionModal(Modal):
+    def __init__(self, user_id):
+        super().__init__(title="Add a Champion to Your Win List")
+        self.user_id = user_id
+        self.champion_input = TextInput(label="Champion Name", placeholder="e.g., Ahri, Zed")
+        self.add_item(self.champion_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # Retrieve the entered champion name
+        entered_champion = self.champion_input.value.strip()
+
+        # Validate the entered champion against the predefined list
+        if entered_champion not in lol_champions:
+            await interaction.response.send_message(
+                f"Champion **{entered_champion}** not found in the available champion list.",
+                ephemeral=True
+            )
+            return
+
+        # Load existing wins data
+        champion_wins = load_champion_wins()
+
+        # Update or create the entry for the user, ensuring the 'wins' key always exists
+        user_key = str(self.user_id)
+        if user_key not in champion_wins:
+            champion_wins[user_key] = {"name": interaction.user.name, "wins": []}
+        elif "wins" not in champion_wins[user_key]:
+            champion_wins[user_key]["wins"] = []
+
+        # Check if the champion is already in the user's wins
+        existing_champions = [win["champion"] for win in champion_wins[user_key]["wins"]]
+        if entered_champion not in existing_champions:
+            # Add the new win only if it doesn't already exist
+            champion_wins[user_key]["wins"].append({
+                "champion": entered_champion,
+                "timestamp": datetime.now().strftime("%d-%m-%Y %H:%M")
+            })
+            save_champion_wins(champion_wins)
+            status_message = f"**{entered_champion}** successfully added to your win-list."
+        else:
+            status_message = f"**{entered_champion}** is already in your win-list."
+
+        # Respond with a confirmation message
+        await interaction.response.send_message(
+            status_message,
+            ephemeral=True
+        )
+
+class AddChampionView(View):
+    def __init__(self, user_id):
+        super().__init__()
+        self.user_id = user_id
+
+        # Create the "Add Champion" button and set its callback
+        add_button = Button(
+            label="Add a champion",
+            style=discord.ButtonStyle.success
+        )
+        add_button.callback = self.add_champion_callback
+        self.add_item(add_button)
+
+    async def add_champion_callback(self, interaction: discord.Interaction):
+        # Show the modal to add a champion
+        await interaction.response.send_modal(AddChampionModal(self.user_id))
+
 
 class ArenaHelpView(View):
     def __init__(self, ctx):
@@ -197,48 +262,56 @@ class ChampionButtonView(View):
             embed=embed, view=ShowWinsView(clicked_user.id, self.ctx), ephemeral=True
         )
 
-class RemoveChampionView(View):
-    def __init__(self, user_id, champions, interaction):
-        super().__init__()
+class RemoveChampionModal(Modal):
+    def __init__(self, user_id):
+        super().__init__(title="Remove a Champion from Your Win List")
         self.user_id = user_id
-        self.interaction = interaction
+        self.champion_input = TextInput(label="Champion Name", placeholder="e.g., Ahri, Zed")
+        self.add_item(self.champion_input)
 
-        for champion in champions:
-            champion_button = Button(
-                label=champion,
-                style=discord.ButtonStyle.danger,
-                custom_id=champion  # Setting the champion name as the custom_id
-            )
-            champion_button.callback = self.remove_champion
-            self.add_item(champion_button)
+    async def on_submit(self, interaction: discord.Interaction):
+        # Retrieve the entered champion name
+        entered_champion = self.champion_input.value.strip()
 
-    async def remove_champion(self, interaction: discord.Interaction):
-        # Retrieve the clicked champion via the `custom_id`
-        clicked_champion = interaction.data['custom_id']
-
-        # Load the current wins data
+        # Load existing wins data
         champion_wins = load_champion_wins()
 
-        # Remove the selected champion from the user's list
+        # Remove the entered champion from the user's list
         user_key = str(self.user_id)
-        if user_key in champion_wins:
+        if user_key in champion_wins and "wins" in champion_wins[user_key]:
+            original_count = len(champion_wins[user_key]["wins"])
             champion_wins[user_key]["wins"] = [
-                win for win in champion_wins[user_key]["wins"] if win["champion"] != clicked_champion
+                win for win in champion_wins[user_key]["wins"] if win["champion"] != entered_champion
             ]
             save_champion_wins(champion_wins)
 
-        # Prepare a confirmation message
-        message = f"**{clicked_champion}** has been removed from your win-list."
+            # Check if a champion was actually removed
+            if entered_champion.lower() not in [champ.lower() for champ in lol_champions]:
+                status_message = f"**{entered_champion}** is not a champion."
+            elif len(champion_wins[user_key]["wins"]) < original_count:
+                status_message = f"**{entered_champion}** has been removed from your win-list."
+            else:
+                status_message = f"**{entered_champion}** is not in your win-list."
+        else:
+            status_message = f"**{entered_champion}** is not in your win-list."
 
-        # Send a new embed with the confirmation
-        embed = discord.Embed(
-            title="Champion Removed",
-            description=message,
-            color=discord.Color.red()
-        )
+        # Respond with a confirmation message
+        await interaction.response.send_message(status_message, ephemeral=True)
 
-        # Update the interaction with the confirmation message
-        await interaction.response.edit_message(embed=embed, view=None)
+
+class RemoveChampionView(View):
+    def __init__(self, user_id):
+        super().__init__()
+        self.user_id = user_id
+
+        # Create the "Remove Champion" button and set its callback
+        remove_button = Button(label="Remove a champion", style=discord.ButtonStyle.danger)
+        remove_button.callback = self.remove_champion_callback
+        self.add_item(remove_button)
+
+    async def remove_champion_callback(self, interaction: discord.Interaction):
+        # Show the modal to remove a champion
+        await interaction.response.send_modal(RemoveChampionModal(self.user_id))
 
 @bot.event
 async def on_ready():
@@ -267,7 +340,7 @@ async def arena(ctx, arg: str = ""):
         await generate_teams(ctx, arg)
     elif arg.lower() == "help":
         await list_commands(ctx)
-    elif arg.lower() in ["wins", "win", "w", "list"]:
+    elif arg.lower() in ["wins", "win", "w", "list" "l"]:
         await list_wins(ctx)
     elif arg.lower() == ["users", "user", "players", "player"]:
         await list_players(ctx)
@@ -302,13 +375,10 @@ async def list_wins(ctx):
         if wins:
             # Format the win list using bullet points and additional styling
             wins_str = "\n".join([f"• **{win['champion']}** (_{win['timestamp']}_)" for win in wins])
-            champions = [win["champion"] for win in wins]
         else:
             wins_str = "The win list is currently empty 🥲"
-            champions = []
     else:
         wins_str = "The win list is currently empty 🥲"
-        champions = []
 
     # Create an embed with the updated, styled win list
     embed = discord.Embed(
@@ -317,33 +387,12 @@ async def list_wins(ctx):
         color=discord.Color.green()
     )
 
-    # Add a "Remove Champion" button if there are champions to remove
-    if champions:
-        view = View()
-        remove_button = Button(
-            label="Remove a champion",
-            style=discord.ButtonStyle.danger
-        )
+    # Add the new "Remove Champion" button with a modal and "Add Champion" button
+    view = View()
+    view.add_item(RemoveChampionView(ctx.author.id).children[0])  # Get the Remove button
+    view.add_item(AddChampionView(ctx.author.id).children[0])  # Get the Add button
 
-        async def remove_champion_menu(interaction: discord.Interaction):
-            # Create an embed and view for the removal menu
-            removal_embed = discord.Embed(
-                title="Remove a Champion",
-                description="Choose a champion to remove from your list.",
-                color=discord.Color.red()
-            )
-            removal_view = RemoveChampionView(interaction.user.id, champions, interaction)
-
-            # Send the removal options directly in the channel but only visible to the user
-            await interaction.response.send_message(embed=removal_embed, view=removal_view, ephemeral=True)
-
-        # Set the callback for the button
-        remove_button.callback = remove_champion_menu
-        view.add_item(remove_button)
-    else:
-        view = None
-
-    # Send the embed with or without the view
+    # Send the embed with the view
     await ctx.send(embed=embed, view=view)
 
 
