@@ -486,6 +486,7 @@ async def generate_teams(ctx, arg=None):
         await ctx.send("You need to be in a voice channel to use this command!")
 
 async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=2, teammate_name=None):
+    teammate_name = None if teammate_name == "Teammate" else None
     user_id = ctx.author.id
     author = ctx.author.name
 
