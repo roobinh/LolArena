@@ -4,7 +4,6 @@ from discord.ext import commands
 from discord.ui import Button, View, Modal, TextInput
 from discord.ext.commands import MissingPermissions
 from datetime import datetime
-from collections import OrderedDict
 
 # List of League of Legends champions
 lol_champions = [
@@ -413,11 +412,11 @@ async def list_leaderboard(ctx):
         if user:
             leaderboard[info['name']] = len(info['wins'])
 
-    leaderboard = OrderedDict(sorted(leaderboard.items()))
+    leaderboard_sorted = sorted(leaderboard_sorted.items(), key=lambda item: item[1])
 
     embed = discord.Embed(
         title="Leaderboard 🏆",
-        description="\n".join([f"**{name}**:{total} wins" for name,total in leaderboard.items()]),
+        description="\n".join([f"**{name}**:{total} wins" for name,total in leaderboard_sorted .items()]),
         color=discord.Color.orange()
     )
 
