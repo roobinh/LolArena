@@ -324,6 +324,8 @@ async def arena(ctx, mode: str = "", username: str = ""):
     mode = mode.lower()
     if mode == "help":
         await list_commands(ctx)
+    if mode == "leaderboard":
+        await list_leaderboard(ctx)
     elif mode in ["champions", "champion", "c"]:
         if username:
             target_user = discord.utils.get(ctx.guild.members, name=username)
@@ -376,9 +378,11 @@ async def list_wins(ctx, target_user=None):
 
     # Load the current wins data
     champion_wins = load_champion_wins()
+    total_wins = 0
 
     if user_key in champion_wins and "wins" in champion_wins[user_key]:
         wins = champion_wins[user_key]["wins"]
+        total_wins = len(wins)
         if wins:
             wins_str = "\n".join([f"• **{win['champion']}** (_{win['timestamp']}_)" for win in wins])
         else:
@@ -387,7 +391,7 @@ async def list_wins(ctx, target_user=None):
         wins_str = "The win list is currently empty 🥲"
 
     embed = discord.Embed(
-        title=f"{user_name}'s Win List 👑",
+        title=f"{user_name}'s Win List ({total_wins}) 👑",
         description=wins_str,
         color=discord.Color.green()
     )
@@ -399,6 +403,25 @@ async def list_wins(ctx, target_user=None):
 
     await ctx.send(embed=embed, view=view)
 
+async def list_leaderboard(ctx):
+    wins_file = load_champion_wins()
+    leaderboard = {}
+
+    for info in wins_file.values():
+        user = discord.utils.get(ctx.guild.members, name=info['name'])
+        if user:
+            leaderboard[info['name']] = len(info['wins'])
+
+    leaderboard = dict(sorted(leaderboard.items()))
+
+    embed = discord.Embed(
+        title="Leaderboard 🏆",
+        description="\n".join([f"**{name}**:{total} wins" for name,total in leaderboard.items()]),
+        color=discord.Color.orange()
+    )
+
+    view = View()
+    await ctx.send(embed=embed, view=view)
 
 async def list_commands(ctx):
     embed = discord.Embed(
