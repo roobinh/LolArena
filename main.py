@@ -504,7 +504,7 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
             await ctx.send(f"User **{teammate_name}** not found.")
             return
         teammate_id = target_user.id
-        teammate_name_actual = target_user.name
+        teammate_name_actual = teammate_name
         teammate_wins = [win["champion"] for win in champion_wins.get(str(teammate_id), {}).get("wins", [])]
         available_for_teammate = [champion for champion in lol_champions if champion not in teammate_wins]
         if not available_for_teammate:
