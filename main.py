@@ -36,68 +36,9 @@ intents.voice_states = True
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="/", intents=intents)
-
-wins_file = "champion_wins.json"
 # Dictionary to store assigned numbers to players
 player_numbers = {}
-
-# Helper function to load or initialize the wins data
-def load_champion_wins():
-    if os.path.exists(wins_file):
-        try:
-            with open(wins_file, "r") as file:
-                return json.load(file)
-        except json.JSONDecodeError:
-            return {}
-    return {}
-
-# Helper function to save the wins data
-def save_champion_wins(data):
-    with open(wins_file, "w") as file:
-        json.dump(data, file, indent=4)
-
-class RemoveChampionView(View):
-    def __init__(self, user_id, champions, interaction):
-        super().__init__()
-        self.user_id = user_id
-        self.interaction = interaction
-
-        for champion in champions:
-            champion_button = Button(
-                label=champion,
-                style=discord.ButtonStyle.danger,
-                custom_id=champion  # Setting the champion name as the custom_id
-            )
-            champion_button.callback = self.remove_champion
-            self.add_item(champion_button)
-
-    async def remove_champion(self, interaction: discord.Interaction):
-        # Retrieve the clicked champion via the `custom_id`
-        clicked_champion = interaction.data['custom_id']
-
-        # Load the current wins data
-        champion_wins = load_champion_wins()
-
-        # Remove the selected champion from the user's list
-        user_key = str(self.user_id)
-        if user_key in champion_wins:
-            champion_wins[user_key]["wins"] = [
-                win for win in champion_wins[user_key]["wins"] if win["champion"] != clicked_champion
-            ]
-            save_champion_wins(champion_wins)
-
-        # Prepare a confirmation message
-        message = f"**{clicked_champion}** has been removed from your win-list."
-
-        # Send a new embed with the confirmation
-        embed = discord.Embed(
-            title="Champion Removed",
-            description=message,
-            color=discord.Color.red()
-        )
-
-        # Update the interaction with the confirmation message
-        await interaction.response.edit_message(embed=embed, view=None)
+wins_file = "champion_wins.json"
 
 class ArenaHelpView(View):
     def __init__(self, ctx):
@@ -139,35 +80,24 @@ class ArenaHelpView(View):
         await list_players(self.ctx)
 
 class ShowWinsView(View):
-    def __init__(self, user_id):
+    def __init__(self, user_id, ctx):
         super().__init__()
         self.user_id = user_id
+        self.ctx = ctx
+
+        # Create the "Show Wins" button and set its callback
         show_wins_button = Button(
             label="Show wins",
-            style=discord.ButtonStyle.primary  # Blue
+            style=discord.ButtonStyle.primary
         )
-        show_wins_button.callback = self.show_wins
+        show_wins_button.callback = self.show_wins_callback
         self.add_item(show_wins_button)
 
-    async def show_wins(self, interaction: discord.Interaction):
-        # Load the current wins data
-        champion_wins = load_champion_wins()
-        user_key = str(self.user_id)
-
-        if user_key in champion_wins and "wins" in champion_wins[user_key]:
-            wins = champion_wins[user_key]["wins"]
-            wins_str = "\n".join([f"{win['champion']} ({win['timestamp']})" for win in wins])
-        else:
-            wins_str = "No wins recorded."
-
-        # Create the win list embed with a green color
-        embed = discord.Embed(
-            title=f"Win List 👑",
-            description=wins_str,
-            color=discord.Color.green()
-        )
-
-        await interaction.response.send_message(embed=embed)
+    async def show_wins_callback(self, interaction: discord.Interaction):
+        # Call list_wins with the original context and send the output
+        await list_wins(self.ctx)
+        # Acknowledge the interaction to confirm that the button click was processed
+        await interaction.response.defer()
 
 
 class ChampionButtonView(View):
@@ -264,41 +194,51 @@ class ChampionButtonView(View):
 
         # Add the "Show Wins" button using a separate view
         await interaction.response.send_message(
-            embed=embed, view=ShowWinsView(clicked_user.id), ephemeral=True
+            embed=embed, view=ShowWinsView(clicked_user.id, self.ctx), ephemeral=True
         )
 
+class RemoveChampionView(View):
+    def __init__(self, user_id, champions, interaction):
+        super().__init__()
+        self.user_id = user_id
+        self.interaction = interaction
 
-def is_git_repo_up_to_date():
-    try:
-        # Fetch the latest changes from the remote
-        subprocess.run(["git", "fetch"], check=True)
+        for champion in champions:
+            champion_button = Button(
+                label=champion,
+                style=discord.ButtonStyle.danger,
+                custom_id=champion  # Setting the champion name as the custom_id
+            )
+            champion_button.callback = self.remove_champion
+            self.add_item(champion_button)
 
-        # Check the difference between the local branch and the remote branch
-        local_branch = subprocess.run(
-            ["git", "rev-parse", "@"],
-            check=True,
-            stdout=subprocess.PIPE,
-            text=True
-        ).stdout.strip()
-        
-        remote_branch = subprocess.run(
-            ["git", "rev-parse", "@{u}"],
-            check=True,
-            stdout=subprocess.PIPE,
-            text=True
-        ).stdout.strip()
-        
-        # Check for differences between local and remote branches
-        if local_branch == remote_branch:
-            print("Your local branch is up to date.")
-        else:
-            print("Your local branch is not up to date with the remote branch.")
-            # Optionally, provide instructions for updating
-            print("Consider pulling the latest changes with 'git pull'.")
-    except subprocess.CalledProcessError as e:
-        print("Verifying Git Status: Error while checking repository status:", e)
-    except Exception as e:
-        print("Verifying Git Status: An unexpected error occurred, probably because git is not installed.", e)
+    async def remove_champion(self, interaction: discord.Interaction):
+        # Retrieve the clicked champion via the `custom_id`
+        clicked_champion = interaction.data['custom_id']
+
+        # Load the current wins data
+        champion_wins = load_champion_wins()
+
+        # Remove the selected champion from the user's list
+        user_key = str(self.user_id)
+        if user_key in champion_wins:
+            champion_wins[user_key]["wins"] = [
+                win for win in champion_wins[user_key]["wins"] if win["champion"] != clicked_champion
+            ]
+            save_champion_wins(champion_wins)
+
+        # Prepare a confirmation message
+        message = f"**{clicked_champion}** has been removed from your win-list."
+
+        # Send a new embed with the confirmation
+        embed = discord.Embed(
+            title="Champion Removed",
+            description=message,
+            color=discord.Color.red()
+        )
+
+        # Update the interaction with the confirmation message
+        await interaction.response.edit_message(embed=embed, view=None)
 
 @bot.event
 async def on_ready():
@@ -335,6 +275,21 @@ async def arena(ctx, arg: str = ""):
         await generate_champions(ctx)
     else:
         await ctx.send("Unknown argument provided. Use `/arena help` for the correct syntax.")
+
+# Helper function to load or initialize the wins data
+def load_champion_wins():
+    if os.path.exists(wins_file):
+        try:
+            with open(wins_file, "r") as file:
+                return json.load(file)
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+# Helper function to save the wins data
+def save_champion_wins(data):
+    with open(wins_file, "w") as file:
+        json.dump(data, file, indent=4)
 
 async def list_wins(ctx):
     # Load the current wins data
@@ -390,7 +345,6 @@ async def list_wins(ctx):
 
     # Send the embed with or without the view
     await ctx.send(embed=embed, view=view)
-
 
 
 async def list_commands(ctx):
@@ -503,6 +457,38 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
         await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx, random_champions, reroll_count, max_rerolls))
     else:
         await ctx.send(embed=embed, view=ChampionButtonView(ctx, random_champions, reroll_count, max_rerolls))
+
+def is_git_repo_up_to_date():
+    try:
+        # Fetch the latest changes from the remote
+        subprocess.run(["git", "fetch"], check=True)
+
+        # Check the difference between the local branch and the remote branch
+        local_branch = subprocess.run(
+            ["git", "rev-parse", "@"],
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True
+        ).stdout.strip()
+        
+        remote_branch = subprocess.run(
+            ["git", "rev-parse", "@{u}"],
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True
+        ).stdout.strip()
+        
+        # Check for differences between local and remote branches
+        if local_branch == remote_branch:
+            print("Your local branch is up to date.")
+        else:
+            print("Your local branch is not up to date with the remote branch.")
+            # Optionally, provide instructions for updating
+            print("Consider pulling the latest changes with 'git pull'.")
+    except subprocess.CalledProcessError as e:
+        print("Verifying Git Status: Error while checking repository status:", e)
+    except Exception as e:
+        print("Verifying Git Status: An unexpected error occurred, probably because git is not installed.", e)
 
 is_git_repo_up_to_date()
 bot.run(bot_token)
