@@ -340,7 +340,7 @@ async def arena(ctx, mode: str = "", username: str = ""):
     mode = mode.lower()
     if mode == "teams":
         await generate_teams(ctx)
-    elif mode in ["champions", "c"]:
+    elif mode in ["champions", "champion", "c"]:
         if username:
             target_user = discord.utils.get(ctx.guild.members, name=username)
             if target_user:
@@ -500,35 +500,40 @@ async def generate_teams(ctx, arg=None):
     else:
         await ctx.send("You need to be in a voice channel to use this command!")
 
-async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=2, clicked_user=None):
-    if clicked_user:
-        # Find the user object by the name
-        target_user = discord.utils.get(ctx.guild.members, name=clicked_user)
-        if not target_user:
-            await ctx.send(f"User **{clicked_user}** not found.")
-            return
-        user_id = target_user.id
-        author = clicked_user
-    else:
-        # If no specific user provided, use the command author
-        user_id = ctx.author.id
-        author = ctx.author.name
+async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=2, teammate_name=None):
+    user_id = ctx.author.id
+    author = ctx.author.name
 
-    # Load existing wins data
+    # Load champion wins data for the author
     champion_wins = load_champion_wins()
     user_wins = [win["champion"] for win in champion_wins.get(str(user_id), {}).get("wins", [])]
 
-    # Find champions that the user hasn't won with yet
-    available_champions = [champion for champion in lol_champions if champion not in user_wins]
-
-    if len(available_champions) < 2:
-        await ctx.send(f"{author}, you've already won with all available champions.")
+    # Find a champion that the author hasn't won with yet
+    available_for_user = [champion for champion in lol_champions if champion not in user_wins]
+    if not available_for_user:
+        await ctx.send(f"{author}, you have won with all available champions.")
         return
+    user_champion = random.choice(available_for_user)
 
-    # Randomly choose two champions
-    user_champion = random.choice(available_champions)
-    remaining_champions = [champion for champion in lol_champions if champion != user_champion]
-    teammate_champion = random.choice(remaining_champions)
+    # Determine if there's a teammate specified, and find a champion for them
+    if teammate_name:
+        target_user = discord.utils.get(ctx.guild.members, name=teammate_name)
+        if not target_user:
+            await ctx.send(f"User **{teammate_name}** not found.")
+            return
+        teammate_id = target_user.id
+        teammate_name_actual = target_user.name
+        teammate_wins = [win["champion"] for win in champion_wins.get(str(teammate_id), {}).get("wins", [])]
+        available_for_teammate = [champion for champion in lol_champions if champion not in teammate_wins]
+        if not available_for_teammate:
+            await ctx.send(f"{teammate_name_actual}, you have won with all available champions.")
+            return
+        teammate_champion = random.choice(available_for_teammate)
+    else:
+        # If no teammate is specified, set it to a placeholder value
+        teammate_name_actual = "Teammate"
+        available_for_teammate = [champion for champion in lol_champions if champion != user_champion]
+        teammate_champion = random.choice(available_for_teammate)
 
     # Clean names for URL generation
     def clean_name(name):
@@ -542,7 +547,7 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
 
     embed = discord.Embed(
         title="Random Champions",
-        description=f"{author}: {user_hyperlink}\nTeammate: {teammate_hyperlink}",
+        description=f"{author}: {user_hyperlink}\n{teammate_name_actual}: {teammate_hyperlink}",
         color=discord.Color.orange()
     )
 
@@ -551,7 +556,6 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
         await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx, [user_champion, teammate_champion], reroll_count, max_rerolls))
     else:
         await ctx.send(embed=embed, view=ChampionButtonView(ctx, [user_champion, teammate_champion], reroll_count, max_rerolls))
-
 
 
 def is_git_repo_up_to_date():
