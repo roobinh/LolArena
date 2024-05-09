@@ -331,23 +331,28 @@ async def on_command_error(ctx, error):
 
 @bot.hybrid_command(
     name="arena",
-    description="Generate random teams of 2 players or based on specified numbers"
+    description="Generate random teams or champions based on specified criteria"
 )
-async def arena(ctx, arg: str = ""):
-    if not arg:
+async def arena(ctx, mode: str = "", username: str = ""):
+    mode = mode.lower()
+    if mode == "teams":
         await generate_teams(ctx)
-    elif arg.isdigit():
-        await generate_teams(ctx, arg)
-    elif arg.lower() == "help":
-        await list_commands(ctx)
-    elif arg.lower() in ["wins", "win", "w", "list" "l"]:
+    elif mode in ["champions", "c"]:
+        if username:
+            target_user = discord.utils.get(ctx.guild.members, name=username)
+            if target_user:
+                await generate_champions(ctx, None, 0, 2, target_user.name)
+            else:
+                await ctx.send(f"User **{username}** not found.")
+        else:
+            await generate_champions(ctx)
+    elif mode in ["wins", "win", "w"]:
         await list_wins(ctx)
-    elif arg.lower() == ["users", "user", "players", "player"]:
+    elif mode in ["players", "player"]:
         await list_players(ctx)
-    elif arg.lower() in ["champions", "c"]:
-        await generate_champions(ctx)
     else:
-        await ctx.send("Unknown argument provided. Use `/arena help` for the correct syntax.")
+        await list_commands(ctx)
+
 
 # Helper function to load or initialize the wins data
 def load_champion_wins():
@@ -484,28 +489,58 @@ async def generate_teams(ctx, arg=None):
         await ctx.send("You need to be in a voice channel to use this command!")
 
 async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=2, clicked_user=None):
-    random_champions = random.sample(lol_champions, 2)
+    if clicked_user:
+        # Find the user object by the name
+        target_user = discord.utils.get(ctx.guild.members, name=clicked_user)
+        if not target_user:
+            await ctx.send(f"User **{clicked_user}** not found.")
+            return
+        user_id = target_user.id
+        author = clicked_user
+    else:
+        # If no specific user provided, use the command author
+        user_id = ctx.author.id
+        author = ctx.author.name
 
+    # Load existing wins data
+    champion_wins = load_champion_wins()
+    user_wins = [win["champion"] for win in champion_wins.get(str(user_id), {}).get("wins", [])]
+
+    # Find champions that the user hasn't won with yet
+    available_champions = [champion for champion in lol_champions if champion not in user_wins]
+
+    if len(available_champions) < 2:
+        await ctx.send(f"{author}, you've already won with all available champions.")
+        return
+
+    # Randomly choose two champions
+    user_champion = random.choice(available_champions)
+    remaining_champions = [champion for champion in lol_champions if champion != user_champion]
+    teammate_champion = random.choice(remaining_champions)
+
+    # Clean names for URL generation
     def clean_name(name):
         return name.lower().replace("'", "").replace(" ", "")
 
-    champion1_url = f"https://blitz.gg/lol/champions/{clean_name(random_champions[0])}/arena"
-    champion2_url = f"https://blitz.gg/lol/champions/{clean_name(random_champions[1])}/arena"
+    user_champion_url = f"https://blitz.gg/lol/champions/{clean_name(user_champion)}/arena"
+    teammate_champion_url = f"https://blitz.gg/lol/champions/{clean_name(teammate_champion)}/arena"
 
-    champion1_hyperlink = f"[{random_champions[0]}]({champion1_url})"
-    champion2_hyperlink = f"[{random_champions[1]}]({champion2_url})"
+    user_hyperlink = f"[{user_champion}]({user_champion_url})"
+    teammate_hyperlink = f"[{teammate_champion}]({teammate_champion_url})"
 
-    author = clicked_user if clicked_user else ctx.author.name
     embed = discord.Embed(
         title="Random Champions",
-        description=f"{author}: {champion1_hyperlink}\nTeammate: {champion2_hyperlink}",
+        description=f"{author}: {user_hyperlink}\nTeammate: {teammate_hyperlink}",
         color=discord.Color.orange()
     )
 
+    # Update the view if there's an interaction or send a new message otherwise
     if interaction:
-        await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx, random_champions, reroll_count, max_rerolls))
+        await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx, [user_champion, teammate_champion], reroll_count, max_rerolls))
     else:
-        await ctx.send(embed=embed, view=ChampionButtonView(ctx, random_champions, reroll_count, max_rerolls))
+        await ctx.send(embed=embed, view=ChampionButtonView(ctx, [user_champion, teammate_champion], reroll_count, max_rerolls))
+
+
 
 def is_git_repo_up_to_date():
     try:
