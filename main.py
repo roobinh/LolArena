@@ -167,12 +167,13 @@ class ShowWinsView(View):
 
 
 class ChampionButtonView(View):
-    def __init__(self, ctx, champions, reroll_count=0, max_rerolls=2):
+    def __init__(self, ctx, champions, reroll_count=0, max_rerolls=2, teammate_name=None):
         super().__init__()
         self.ctx = ctx
         self.champions = champions
         self.reroll_count = reroll_count
         self.max_rerolls = max_rerolls
+        self.teammate_name = teammate_name
 
         # Reroll button
         remaining_rerolls = max_rerolls - reroll_count
@@ -202,63 +203,47 @@ class ChampionButtonView(View):
 
     async def generate_again(self, interaction: discord.Interaction):
         self.reroll_count += 1
-        await generate_champions(self.ctx, interaction, self.reroll_count, self.max_rerolls)
+        await generate_champions(self.ctx, interaction, self.reroll_count, self.max_rerolls, self.teammate_name)
 
     async def next_game(self, interaction: discord.Interaction):
-        # Identify the user who clicked the button
         clicked_user = interaction.user.name
-
-        # Acknowledge the interaction
         await interaction.response.defer()
-
-        # Update the title to include the user's name
         await generate_champions(self.ctx, None, 0, 2, clicked_user)
 
     async def game_win(self, interaction: discord.Interaction):
         clicked_user = interaction.user
         author = self.ctx.author
 
-        # Determine which champion to attribute based on the clicked user
         if clicked_user == author:
             winner_champion = self.champions[0]
         else:
             winner_champion = self.champions[1]
 
-        # Get the current timestamp
         win_timestamp = datetime.now().strftime("%d-%m-%Y %H:%M")
-
-        # Load the existing wins data
         champion_wins = load_champion_wins()
-
-        # Update or create the entry for the clicked user, ensuring the 'wins' key always exists
         user_key = str(clicked_user.id)
         if user_key not in champion_wins:
             champion_wins[user_key] = {"name": clicked_user.name, "wins": []}
         elif "wins" not in champion_wins[user_key]:
             champion_wins[user_key]["wins"] = []
 
-        # Check if the champion is already in the user's wins
         existing_champions = [win["champion"] for win in champion_wins[user_key]["wins"]]
         if winner_champion not in existing_champions:
-            # Add the new win only if it doesn't already exist
             champion_wins[user_key]["wins"].append({
                 "champion": winner_champion,
                 "timestamp": win_timestamp
             })
             save_champion_wins(champion_wins)
-
             status_message = f"**{winner_champion}** successfully added to your win-list."
         else:
             status_message = f"**{winner_champion}** is already in your win-list."
 
-        # Create a simple confirmation embed
         embed = discord.Embed(
             title="Champion Win Added",
             description=status_message,
             color=discord.Color.green()
         )
 
-        # Add the "Show Wins" button using a separate view
         await interaction.response.send_message(
             embed=embed, view=ShowWinsView(clicked_user.id, self.ctx), ephemeral=True
         )
@@ -504,18 +489,14 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
     user_id = ctx.author.id
     author = ctx.author.name
 
-    # Load champion wins data for the author
     champion_wins = load_champion_wins()
     user_wins = [win["champion"] for win in champion_wins.get(str(user_id), {}).get("wins", [])]
-
-    # Find a champion that the author hasn't won with yet
     available_for_user = [champion for champion in lol_champions if champion not in user_wins]
     if not available_for_user:
         await ctx.send(f"{author}, you have won with all available champions.")
         return
     user_champion = random.choice(available_for_user)
 
-    # Determine if there's a teammate specified, and find a champion for them
     if teammate_name:
         target_user = discord.utils.get(ctx.guild.members, name=teammate_name)
         if not target_user:
@@ -530,12 +511,10 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
             return
         teammate_champion = random.choice(available_for_teammate)
     else:
-        # If no teammate is specified, set it to a placeholder value
         teammate_name_actual = "Teammate"
         available_for_teammate = [champion for champion in lol_champions if champion != user_champion]
         teammate_champion = random.choice(available_for_teammate)
 
-    # Clean names for URL generation
     def clean_name(name):
         return name.lower().replace("'", "").replace(" ", "")
 
@@ -551,12 +530,10 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
         color=discord.Color.orange()
     )
 
-    # Update the view if there's an interaction or send a new message otherwise
     if interaction:
-        await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx, [user_champion, teammate_champion], reroll_count, max_rerolls))
+        await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx, [user_champion, teammate_champion], reroll_count, max_rerolls, teammate_name_actual))
     else:
-        await ctx.send(embed=embed, view=ChampionButtonView(ctx, [user_champion, teammate_champion], reroll_count, max_rerolls))
-
+        await ctx.send(embed=embed, view=ChampionButtonView(ctx, [user_champion, teammate_champion], reroll_count, max_rerolls, teammate_name_actual))
 
 def is_git_repo_up_to_date():
     try:
