@@ -546,14 +546,15 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
         return name.lower().replace("'", "").replace(" ", "")
 
     user_champion_url = f"https://blitz.gg/lol/champions/{clean_name(user_champion)}/arena"
-    teammate_champion_url = f"https://blitz.gg/lol/champions/{clean_name(teammate_champion)}/arena"
-
     user_hyperlink = f"[{user_champion}]({user_champion_url})"
+    teammate_champion_url = f"https://blitz.gg/lol/champions/{clean_name(teammate_champion)}/arena"
     teammate_hyperlink = f"[{teammate_champion}]({teammate_champion_url})"
 
+    description = f"{author}: {user_hyperlink}\n{teammate_name_actual}: {teammate_hyperlink} \
+                        \n\n _This excludes the champions you've won with._"
     embed = discord.Embed(
         title="Random Champions",
-        description=f"{author}: {user_hyperlink}\n{teammate_name_actual}: {teammate_hyperlink}",
+        description=description,
         color=discord.Color.orange()
     )
 
