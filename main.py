@@ -88,7 +88,6 @@ class AddChampionModal(Modal):
             ephemeral=True
         )
 
-            label="Add",
 class ArenaHelpView(View):
     def __init__(self, ctx):
         super().__init__()
