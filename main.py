@@ -5,35 +5,24 @@ from discord.ui import Button, View, Modal, TextInput
 from discord.ext.commands import MissingPermissions
 from datetime import datetime
 
-# List of League of Legends champions
-lol_champions = [
-    "Aatrox", "Ahri", "Akali", "Alistar", "Amumu", "Anivia", "Annie", "Aphelios", "Ashe", "Aurelion Sol",
-    "Azir", "Bard", "Blitzcrank", "Brand", "Braum", "Caitlyn", "Camille", "Cassiopeia", "Cho'Gath",
-    "Corki", "Darius", "Diana", "Dr. Mundo", "Draven", "Ekko", "Elise", "Evelynn", "Ezreal", "Fiddlesticks",
-    "Fiora", "Fizz", "Galio", "Gangplank", "Garen", "Gnar", "Gragas", "Graves", "Hecarim", "Heimerdinger",
-    "Illaoi", "Irelia", "Ivern", "Janna", "Jarvan IV", "Jax", "Jayce", "Jhin", "Jinx", "Kai'Sa",
-    "Kalista", "Karma", "Karthus", "Kassadin", "Katarina", "Kayle", "Kayn", "Kennen", "Kha'Zix", "Kindred",
-    "Kled", "Kog'Maw", "LeBlanc", "Lee Sin", "Leona", "Lillia", "Lissandra", "Lucian", "Lulu", "Lux",
-    "Malphite", "Malzahar", "Maokai", "Master Yi", "Miss Fortune", "Mordekaiser", "Morgana", "Nami", "Nasus", "Nautilus",
-    "Neeko", "Nidalee", "Nocturne", "Nunu & Willump", "Olaf", "Orianna", "Ornn", "Pantheon", "Poppy", "Pyke",
-    "Qiyana", "Quinn", "Rakan", "Rammus", "Rek'Sai", "Rell", "Renekton", "Rengar", "Riven", "Rumble",
-    "Ryze", "Samira", "Sejuani", "Senna", "Seraphine", "Sett", "Shaco", "Shen", "Shyvana", "Singed",
-    "Sion", "Sivir", "Skarner", "Sona", "Soraka", "Swain", "Sylas", "Syndra", "Tahm Kench", "Taliyah",
-    "Talon", "Taric", "Teemo", "Thresh", "Tristana", "Trundle", "Tryndamere", "Twisted Fate", "Twitch", "Udyr",
-    "Urgot", "Varus", "Vayne", "Veigar", "Vel'Koz", "Vi", "Viego", "Viktor", "Vladimir", "Volibear",
-    "Warwick", "Wukong", "Xayah", "Xerath", "Xin Zhao", "Yasuo", "Yone", "Yorick", "Yuumi", "Zac",
-    "Zed", "Ziggs", "Zilean", "Zoe", "Zyra","Gwen", "Akshan", "Vex", "Zeri", "Renata Glasc", "Bel'veth", 
-    "Nilah", "K'sante", "Milio", "Naafiri", "Briar", "Hwei", "Smolder"
-]
+def load_champion_list(file_path="lol_champions.json"):
+    with open(file_path, "r") as file:
+        data = json.load(file)
+    return data["champions"]
 
+# List of League of Legends champions
+lol_champions = load_champion_list()
+
+# Get tokens
 env = dotenv_values('.env')
 bot_token = env.get('BOT_TOKEN_DEV') or env.get('BOT_TOKEN')
 
+# Bot Variables
 intents = discord.Intents.all()
 intents.voice_states = True
 intents.message_content = True
-
 bot = commands.Bot(command_prefix="/", intents=intents)
+
 # Dictionary to store assigned numbers to players
 player_numbers = {}
 wins_file = "champion_wins.json"
@@ -353,7 +342,6 @@ async def arena(ctx, mode: str = "", username: str = ""):
             await generate_teams(ctx, mode)
         else:
             await generate_teams(ctx)
-
 
 # Helper function to load or initialize the wins data
 def load_champion_wins():
