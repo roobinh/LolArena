@@ -413,7 +413,7 @@ async def list_leaderboard(ctx):
         if user:
             leaderboard[info['name']] = len(info['wins'])
 
-    leaderboard_sorted = dict(sorted(leaderboard.items(), key=lambda item: item[1]))
+    leaderboard_sorted = dict(sorted(leaderboard.items(), key=lambda item: item[1], reverse=True))
     description = "\n".join([f"#{i+1} **{name}**:{total} win{'s' if total != 1 else ''}" \
                              for i, (name, total) in enumerate(leaderboard_sorted.items())])
     embed = discord.Embed(
