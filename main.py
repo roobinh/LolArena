@@ -88,24 +88,7 @@ class AddChampionModal(Modal):
             ephemeral=True
         )
 
-class AddChampionView(View):
-    def __init__(self, user_id):
-        super().__init__()
-        self.user_id = user_id
-
-        # Create the "Add Champion" button and set its callback
-        add_button = Button(
             label="Add",
-            style=discord.ButtonStyle.success
-        )
-        add_button.callback = self.add_champion_callback
-        self.add_item(add_button)
-
-    async def add_champion_callback(self, interaction: discord.Interaction):
-        # Show the modal to add a champion
-        await interaction.response.send_modal(AddChampionModal(self.user_id))
-
-
 class ArenaHelpView(View):
     def __init__(self, ctx):
         super().__init__()
@@ -285,18 +268,37 @@ class RemoveChampionModal(Modal):
         # Respond with a confirmation message
         await interaction.response.send_message(status_message, ephemeral=True)
 
+class AddChampionView(View):
+    def __init__(self, user_id):
+        super().__init__()
+        self.user_id = user_id
+        self.add_button = Button(label="Add", style=discord.ButtonStyle.success)
+        self.add_button.callback = self.add_champion_callback
+        self.add_item(self.add_button)
+
+    async def add_champion_callback(self, interaction: discord.Interaction):
+        # Ensure only the intended user can interact
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("You can only edit your own win list. Use `/arena wins` to see your own win list.", ephemeral=True)
+            return
+
+        # Show the modal to add a champion
+        await interaction.response.send_modal(AddChampionModal(self.user_id))
 
 class RemoveChampionView(View):
     def __init__(self, user_id):
         super().__init__()
         self.user_id = user_id
-
-        # Create the "Remove Champion" button and set its callback
-        remove_button = Button(label="Remove", style=discord.ButtonStyle.danger)
-        remove_button.callback = self.remove_champion_callback
-        self.add_item(remove_button)
+        self.remove_button = Button(label="Remove", style=discord.ButtonStyle.danger)
+        self.remove_button.callback = self.remove_champion_callback
+        self.add_item(self.remove_button)
 
     async def remove_champion_callback(self, interaction: discord.Interaction):
+        # Ensure only the intended user can interact
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("You can only edit your own win list. Use `/arena wins` to see your own win list.", ephemeral=True)
+            return
+
         # Show the modal to remove a champion
         await interaction.response.send_modal(RemoveChampionModal(self.user_id))
 
