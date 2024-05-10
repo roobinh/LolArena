@@ -312,6 +312,7 @@ async def on_command_error(ctx, error):
     elif isinstance(error, commands.CommandNotFound):
         pass
     elif isinstance(error, commands.CommandInvokeError):
+        print(error)
         await ctx.send("An error occurred while executing the command. Make sure I have the necessary permissions.")
     else:
         await ctx.send(f"An unexpected error occurred: {error}")
@@ -412,13 +413,14 @@ async def list_leaderboard(ctx):
         if user:
             leaderboard[info['name']] = len(info['wins'])
 
-    leaderboard_sorted = sorted(leaderboard_sorted.items(), key=lambda item: item[1])
-
+    leaderboard_sorted = dict(sorted(leaderboard.items(), key=lambda item: item[1]))
+    description = "\n".join([f"#{i+1} **{name}**:{total} win{'s' if total != 1 else ''}" \
+                             for i, (name, total) in enumerate(leaderboard_sorted.items())])
     embed = discord.Embed(
         title="Leaderboard 🏆",
-        description="\n".join([f"**{name}**:{total} wins" for name,total in leaderboard_sorted .items()]),
+        description=description,
         color=discord.Color.orange()
-    )
+    ) 
 
     view = View()
     await ctx.send(embed=embed, view=view)
