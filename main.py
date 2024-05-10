@@ -277,7 +277,7 @@ class AddChampionView(View):
 
     async def add_champion_callback(self, interaction: discord.Interaction):
         # Ensure only the intended user can interact
-        if interaction.user.id != self.user_id:
+        if str(interaction.user.id) != str(self.user_id):
             await interaction.response.send_message("You can only edit your own win list. Use `/arena wins` to see your own win list.", ephemeral=True)
             return
 
@@ -294,7 +294,7 @@ class RemoveChampionView(View):
 
     async def remove_champion_callback(self, interaction: discord.Interaction):
         # Ensure only the intended user can interact
-        if interaction.user.id != self.user_id:
+        if str(interaction.user.id) != str(self.user_id):
             await interaction.response.send_message("You can only edit your own win list. Use `/arena wins` to see your own win list.", ephemeral=True)
             return
 
