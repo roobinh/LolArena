@@ -1,35 +1,48 @@
 import os, json, random, discord, subprocess, requests
 from dotenv import dotenv_values
+from discord import app_commands
 from discord.ext import commands
 from discord.ui import Button, View, Modal, TextInput
-from discord.ext.commands import MissingPermissions
 from datetime import datetime
-import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
-def load_champion_list(file_path="lol_champions.json"):
+def load_champion_list(file_path="LOL_CHAMPIONS.json"):
     with open(file_path, "r") as file:
         data = json.load(file)
     return data["champions"]
 
+# Helper function to load or initialize the wins data
+def load_champion_wins():
+    if os.path.exists(WINS_FILE):
+        try:
+            with open(WINS_FILE, "r") as file:
+                return json.load(file)
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
 # List of League of Legends champions
-lol_champions = load_champion_list()
+LOL_CHAMPIONS = load_champion_list()
+WINS_FILE = "champion_wins.json"
+
+# Dictionary to store assigned numbers to players
+player_numbers = {}
 
 # Get tokens
 env = dotenv_values('.env')
-bot_token = env.get('BOT_TOKEN_DEV') or env.get('BOT_TOKEN')
+BOT_TOKEN = env.get('BOT_TOKEN_DEV') or env.get('BOT_TOKEN')
+GUILD_ID = env.get("GUILD_ID", None)
+print(f"GUILD_ID = {GUILD_ID}")
 
 # Bot Variables
 intents = discord.Intents.all()
 intents.voice_states = True
 intents.message_content = True
-bot = commands.Bot(command_prefix="/", intents=intents)
+client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
 
-# Dictionary to store assigned numbers to players
-player_numbers = {}
-wins_file = "champion_wins.json"
-
+        
 class AddChampionModal(Modal):
     def __init__(self, user_id, ctx):
         super().__init__(title="Add a Champion to Your Win List")
@@ -40,12 +53,15 @@ class AddChampionModal(Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         entered_champion = self.champion_input.value.strip()
-        entered_champion = next((champion for champion in lol_champions if champion.lower() == entered_champion.lower()), entered_champion)
+        entered_champion = next((champion for champion in LOL_CHAMPIONS if champion.lower() == entered_champion.lower()), entered_champion)
 
-        if entered_champion not in lol_champions:
+        if entered_champion not in LOL_CHAMPIONS:
             await interaction.response.send_message(f"Champion **{entered_champion}** not found in the available champion list.", ephemeral=True)
             return
 
+        champion_wins = load_champion_wins()
+        user_key = str(self.user_id)
+        
         champion_wins = load_champion_wins()
         user_key = str(self.user_id)
         if user_key not in champion_wins:
@@ -62,14 +78,13 @@ class AddChampionModal(Modal):
             save_champion_wins(champion_wins)
             
             # Fetch the new embed and view with the updated win list
-            embed, view = await list_wins(self.ctx, interaction.user, as_embed=True)
+            embed, view = await get_wins_embed_and_view(interaction, interaction.user)
             status_message = f"**{entered_champion}** has been successfully added to your win list."
             await interaction.response.edit_message(content=status_message, embed=embed, view=view)
         else:
             await interaction.response.send_message(content=f"**{entered_champion}** is already in your win-list.", ephemeral=True)
-
-
-
+        
+        
 class ArenaHelpView(View):
     def __init__(self, ctx):
         super().__init__(timeout=None)
@@ -108,6 +123,7 @@ class ArenaHelpView(View):
     async def list_players(self, interaction: discord.Interaction):
         await interaction.response.defer()  # Acknowledge the interaction
         await list_players(self.ctx)
+
 
 class ShowWinsView(View):
     def __init__(self, user_id, ctx):
@@ -167,12 +183,12 @@ class ChampionButtonView(View):
 
     async def generate_again(self, interaction: discord.Interaction):
         self.reroll_count += 1
-        await generate_champions(self.ctx, interaction, self.reroll_count, self.max_rerolls, self.teammate_name)
+        await generate_champions(interaction, self.reroll_count, self.max_rerolls, self.teammate_name)
 
     async def next_game(self, interaction: discord.Interaction):
         clicked_user = interaction.user.name
         await interaction.response.defer()
-        await generate_champions(self.ctx, None, 0, 2, clicked_user)
+        await generate_champions(None, 0, 2, clicked_user)
 
     async def game_win(self, interaction: discord.Interaction):
         clicked_user = interaction.user
@@ -212,6 +228,7 @@ class ChampionButtonView(View):
             embed=embed, view=ShowWinsView(clicked_user.id, self.ctx), ephemeral=True
         )
 
+
 class RemoveChampionModal(Modal):
     def __init__(self, user_id, ctx):
         super().__init__(title="Remove a Champion from Your Win List")
@@ -223,7 +240,7 @@ class RemoveChampionModal(Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         entered_champion = self.champion_input.value.strip()  # Capitalize for consistent formatting
-        entered_champion_filtered = next((champion for champion in lol_champions if champion.lower() == entered_champion.lower()), None)
+        entered_champion_filtered = next((champion for champion in LOL_CHAMPIONS if champion.lower() == entered_champion.lower()), None)
 
         # Load existing wins data
         champion_wins = load_champion_wins()
@@ -286,6 +303,7 @@ class RemoveChampionView(View):
         # Pass the stored ctx to RemoveChampionModal
         await interaction.response.send_modal(RemoveChampionModal(self.user_id, self.ctx))
 
+
 class SeeAllLeaderboardView(View):
     def __init__(self, ctx):
         super().__init__()
@@ -302,12 +320,16 @@ class SeeAllLeaderboardView(View):
         await interaction.response.defer()  # Optionally respond to the interaction without sending a message
 
 
-@bot.event
+@client.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} ({bot.user.id})")
+    try:
+        synced = await tree.sync(guild=discord.Object(id=GUILD_ID))
+        print(f"Synced {len(synced)} commands.")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
+    
 
-
-@bot.event
+@client.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("I don't have permission to do that. Please check my role permissions.")
@@ -319,74 +341,38 @@ async def on_command_error(ctx, error):
     else:
         await ctx.send(f"An unexpected error occurred: {error}")
 
-@bot.hybrid_command(
-    name="arena",
-    description="Generate random teams or champions based on specified criteria"
-)
-async def arena(ctx, mode: str = "", username: str = ""):
-    mode = mode.lower()
-    if mode == "help":
-        await list_commands(ctx)
-    elif mode == "leaderboard":
-        await send_leaderboard_image(ctx)
-    elif mode in ["champions", "champion", "c"]:
-        if username:
-            target_user = discord.utils.get(ctx.guild.members, name=username)
-            if target_user:
-                await generate_champions(ctx, None, 0, 2, target_user.name)
-            else:
-                await ctx.send(f"User **{username}** not found.")
-        else:
-            await generate_champions(ctx)
-    elif mode in ["wins", "win", "w"]:
-        if username:
-            target_user = discord.utils.get(ctx.guild.members, name=username)
-            if target_user:
-                await list_wins(ctx, target_user)
-            else:
-                await ctx.send(f"User **{username}** not found.")
-        else:
-            await list_wins(ctx)
-    elif mode in ["list", "players", "player"]:
-        await list_players(ctx)
-    else:
-        if mode.isdigit():
-            await generate_teams(ctx, mode)
-        else:
-            await generate_teams(ctx)
-
-# Helper function to load or initialize the wins data
-def load_champion_wins():
-    if os.path.exists(wins_file):
-        try:
-            with open(wins_file, "r") as file:
-                return json.load(file)
-        except json.JSONDecodeError:
-            return {}
-    return {}
 
 # Helper function to save the wins data
 def save_champion_wins(data):
-    with open(wins_file, "w") as file:
+    with open(WINS_FILE, "w") as file:
         json.dump(data, file, indent=4)
 
-async def list_wins(ctx, target_user=None, as_embed=False):
-    user_key = str(target_user.id) if target_user else str(ctx.author.id)
-    user_name = target_user.name if target_user else ctx.author.name
+async def get_wins_embed_and_view(interaction, target_user=None):
+    # If no target user is specified, use the user who initiated the interaction
+    user_key = str(target_user.id) if target_user else str(interaction.user.id)
+    user_name = target_user.display_name if target_user else interaction.user.display_name
 
     champion_wins = load_champion_wins()
     wins = champion_wins.get(user_key, {}).get("wins", [])
-    description = "\n".join([f"• **{win['champion']}** (_{win['timestamp']}_)" for win in wins]) + f"\n\n_{len(wins)} out of {len(lol_champions)} champions_" if wins else "No wins recorded."
+    description = "\n".join([f"• **{win['champion']}** (_{win['timestamp']}_)" for win in wins]) + f"\n\n_{len(wins)} out of {len(LOL_CHAMPIONS)} champions_" if wins else "No wins recorded."
     embed = discord.Embed(title=f"{user_name}'s Win List 👑", description=description, color=discord.Color.green())
 
     view = View()
-    view.add_item(RemoveChampionView(user_key, ctx).children[0])  # Remove button
-    view.add_item(AddChampionView(user_key, ctx).children[0])  # Add button
+    view.add_item(RemoveChampionView(user_key, interaction).children[0])
+    view.add_item(AddChampionView(user_key, interaction).children[0])
 
-    if as_embed:
-        return embed, view
-    else:
-        await ctx.send(embed=embed, view=view)
+    return embed, view
+
+@tree.command(
+    name="wins",
+    description="Shows your wins",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def list_wins(interaction: discord.Interaction, target_user: discord.Member = None):
+    embed, view = await get_wins_embed_and_view(interaction, target_user)
+    await interaction.response.send_message(embed=embed, view=view)
+
+
 
 def split_leaderboard(leaderboard, length=3):
     limited_items = {}
@@ -409,7 +395,7 @@ async def send_leaderboard_image(ctx):
     leaderboard = split_leaderboard(leaderboard)
     
     # Fetch avatars and usernames
-    avatar_info = [fetch_discord_avatar_and_username(user_id, bot_token) for user_id in leaderboard.keys()]
+    avatar_info = [fetch_discord_avatar_and_username(user_id, BOT_TOKEN) for user_id in leaderboard.keys()]
 
     # Generate the leaderboard image
     file_path = generate_leaderboard_with_avatars(leaderboard, avatar_info)
@@ -421,10 +407,10 @@ async def send_leaderboard_image(ctx):
 
 
 async def list_leaderboard(ctx):
-    wins_file = load_champion_wins()
+    WINS_FILE = load_champion_wins()
     leaderboard = {}
 
-    for info in wins_file.values():
+    for info in WINS_FILE.values():
         user = discord.utils.get(ctx.guild.members, name=info['name'])
         if user:
             leaderboard[info['name']] = len(info['wins'])
@@ -441,7 +427,12 @@ async def list_leaderboard(ctx):
     view = View()
     await ctx.send(embed=embed, view=view)
 
-async def list_commands(ctx):
+@tree.command(
+    name="help",
+    description="Show available commands",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def list_commands(interaction: discord.Interaction):
     embed = discord.Embed(
         title="Arena Commands",
         description="Here are the available commands for the arena:",
@@ -474,7 +465,7 @@ async def list_commands(ctx):
     )
 
     # Create a View with buttons and attach it to the embed
-    await ctx.send(embed=embed, view=ArenaHelpView(ctx))
+    await interaction.response.send_message(embed=embed, view=ArenaHelpView(interaction))
 
 
 async def list_players(ctx):
@@ -495,26 +486,45 @@ async def list_players(ctx):
         print("hallo")
         await ctx.send("You need to be in a voice channel to use this command!")
 
-async def generate_teams(ctx, arg=None):
-    if ctx.author.voice and ctx.author.voice.channel:
-        voice_channel = ctx.author.voice.channel
+
+@tree.command(
+    name="champions",
+    description="Generate 2 random champions NEW",
+    guild=discord.Object(id=GUILD_ID)
+)
+@app_commands.describe(teammate="Type the name of your teammate to generate a team of 3 champions")
+async def champions(ctx: commands.Context, teammate: str = None):
+    print("command_champions")
+    if teammate:
+        member = discord.utils.get(ctx.guild.members, display_name=teammate)
+        if member:
+            await generate_champions(ctx, 0, 2, member.display_name)
+        else:
+            await ctx.send("Member not found.")
+    else:
+        await generate_champions(ctx)
+
+@tree.command(
+    name="teams",
+    description="Generate teams of members in voice channel",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def generate_teams(interaction: discord.Interaction):
+    voice_state = interaction.user.voice  # Get the voice state of the user who triggered the interaction
+    if voice_state and voice_state.channel:
+        voice_channel = voice_state.channel
         members = [member for member in voice_channel.members if not member.bot]
 
-        if arg and arg.isdigit():
-            selected_players = [member for member in members if player_numbers.get(member.id) in map(int, arg)]
+        if len(members) == 0:
+            await interaction.response.send_message("No players match these numbers. Check `/arena list` for more information.")
         else:
-            selected_players = members
-
-        if len(selected_players) == 0:
-            await ctx.send("No players match these numbers. Check `/arena list` for more information.")
-        else:
-            random.shuffle(selected_players)
+            random.shuffle(members)
             teams = []
-            while len(selected_players) > 1:
-                team = [selected_players.pop().name, selected_players.pop().name]
+            while len(members) > 1:
+                team = [members.pop().display_name, members.pop().display_name]
                 teams.append(team)
-            if selected_players:
-                solo = selected_players.pop().name
+            if members:
+                solo = members.pop().display_name
                 teams.append([solo])
 
             embed = discord.Embed(
@@ -522,40 +532,41 @@ async def generate_teams(ctx, arg=None):
                 description="\n".join([f"Team {i+1}: {', '.join(team)}" for i, team in enumerate(teams)]),
                 color=discord.Color.green()
             )
-            await ctx.send(embed=embed)
+            await interaction.response.send_message(embed=embed)
     else:
-        print("hallo2")
-        await ctx.send("You need to be in a voice channel to use this command!")
+        await interaction.response.send_message("You need to be in a voice channel to use this command!")
 
-async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=2, teammate_name=None):
+
+
+async def generate_champions(interaction, reroll_count=0, max_rerolls=2, teammate_name=None):
+    author = interaction.user.name 
+    user_id = interaction.user.id  
     teammate_name = None if teammate_name == "Teammate" else teammate_name
-    user_id = ctx.author.id
-    author = ctx.author.name
-
     champion_wins = load_champion_wins()
     user_wins = [win["champion"] for win in champion_wins.get(str(user_id), {}).get("wins", [])]
-    available_for_user = [champion for champion in lol_champions if champion not in user_wins]
+    available_for_user = [champion for champion in LOL_CHAMPIONS if champion not in user_wins]
+
     if not available_for_user:
-        await ctx.send(f"{author}, you have won with all available champions.")
+        await interaction.response.send_message(f"{author}, you have won with all available champions.")
         return
     user_champion = random.choice(available_for_user)
 
     if teammate_name:
-        target_user = discord.utils.get(ctx.guild.members, name=teammate_name)
+        target_user = discord.utils.get(interaction.guild.members, name=teammate_name)
         if not target_user:
-            await ctx.send(f"User **{teammate_name}** not found.")
+            await interaction.response.send_message(f"User **{teammate_name}** not found.")
             return
         teammate_id = target_user.id
         teammate_name_actual = teammate_name
         teammate_wins = [win["champion"] for win in champion_wins.get(str(teammate_id), {}).get("wins", [])]
-        available_for_teammate = [champion for champion in lol_champions if champion not in teammate_wins]
+        available_for_teammate = [champion for champion in LOL_CHAMPIONS if champion not in teammate_wins and champion != user_champion]
         if not available_for_teammate:
-            await ctx.send(f"{teammate_name_actual}, you have won with all available champions.")
+            await interaction.response.send_message(f"{teammate_name_actual}, you have won with all available champions.")
             return
         teammate_champion = random.choice(available_for_teammate)
     else:
         teammate_name_actual = "Teammate"
-        available_for_teammate = [champion for champion in lol_champions if champion != user_champion]
+        available_for_teammate = [champion for champion in LOL_CHAMPIONS if champion != user_champion]
         teammate_champion = random.choice(available_for_teammate)
 
     def clean_name(name):
@@ -568,16 +579,21 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
 
     description = f"{author}: {user_hyperlink}\n{teammate_name_actual}: {teammate_hyperlink} \
                         \n\n _This excludes the champions you've won with._"
+    
     embed = discord.Embed(
         title="Random Champions",
         description=description,
         color=discord.Color.orange()
     )
 
-    if interaction:
-        await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx, [user_champion, teammate_champion], reroll_count, max_rerolls, teammate_name_actual))
+    view = ChampionButtonView(interaction, [user_champion, teammate_champion], reroll_count, max_rerolls, teammate_name_actual)
+    if reroll_count == 0:
+        await interaction.response.send_message(embed=embed, view=view)
     else:
-        await ctx.send(embed=embed, view=ChampionButtonView(ctx, [user_champion, teammate_champion], reroll_count, max_rerolls, teammate_name_actual))
+        await interaction.response.edit_message(embed=embed, view=view)
+
+# Note: You also need to adjust how you call generate_champions in command_champions
+
 
 def is_git_repo_up_to_date():
     try:
@@ -611,10 +627,10 @@ def is_git_repo_up_to_date():
     except Exception as e:
         print("Verifying Git Status: An unexpected error occurred, probably because git is not installed.", e)
 
-def fetch_discord_avatar_and_username(user_id, bot_token):
+def fetch_discord_avatar_and_username(user_id, BOT_TOKEN):
     """Fetches the Discord avatar and username for a given user ID using the specified bot token."""
     url = f"https://discord.com/api/v9/users/{user_id}"
-    headers = {"Authorization": f"Bot {bot_token}"}
+    headers = {"Authorization": f"Bot {BOT_TOKEN}"}
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
         data = response.json()
@@ -627,10 +643,6 @@ def fetch_discord_avatar_and_username(user_id, bot_token):
     else:
         print(f"Failed to fetch data for user {user_id}: {response.status_code} - {response.text}")
         return "path_to_default_avatar.png", 'Unknown User'
-
-from PIL import Image, ImageDraw, ImageFont
-
-from PIL import Image, ImageDraw, ImageFont
 
 def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     """Generates and saves a leaderboard image with avatars, usernames, and scores."""
@@ -679,4 +691,5 @@ def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
 
 
 is_git_repo_up_to_date()
-bot.run(bot_token)
+client.run(BOT_TOKEN)
+
