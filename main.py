@@ -376,9 +376,8 @@ async def list_wins(ctx, target_user=None, as_embed=False):
 
     champion_wins = load_champion_wins()
     wins = champion_wins.get(user_key, {}).get("wins", [])
-
-    description = "\n".join([f"• **{win['champion']}** (_{win['timestamp']}_)" for win in wins]) if wins else "No wins recorded."
-    embed = discord.Embed(title=f"{user_name}'s Win List", description=description, color=discord.Color.green())
+    description = "\n".join([f"• **{win['champion']}** (_{win['timestamp']}_)" for win in wins]) + f"\n\n_{len(wins)} out of {len(lol_champions)} champions_" if wins else "No wins recorded."
+    embed = discord.Embed(title=f"{user_name}'s Win List 👑", description=description, color=discord.Color.green())
 
     view = View()
     view.add_item(RemoveChampionView(user_key, ctx).children[0])  # Remove button
