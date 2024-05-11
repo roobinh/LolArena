@@ -1,4 +1,5 @@
 import os, json, random, discord, subprocess, requests
+from typing import List
 from dotenv import dotenv_values
 from discord import app_commands
 from discord.ext import commands
@@ -26,8 +27,6 @@ def load_champion_wins():
 LOL_CHAMPIONS = load_champion_list()
 WINS_FILE = "champion_wins.json"
 
-# Dictionary to store assigned numbers to players
-player_numbers = {}
 
 # Get tokens
 env = dotenv_values('.env')
@@ -41,6 +40,70 @@ intents.voice_states = True
 intents.message_content = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
+
+class TeamMemberSelectionView(discord.ui.View):
+    def __init__(self, members):
+        super().__init__()
+        # Create the select menu and add it to the view
+        self.add_item(TeamMemberSelectMenu(members))
+
+class TeamMemberSelectMenu(discord.ui.Select):
+    def __init__(self, members):
+        options = [
+            discord.SelectOption(label=member.display_name, value=str(member.id)) for member in members
+        ]
+        super().__init__(
+            placeholder="Select members for the team...",
+            min_values=2,  # Minimum number of selections
+            max_values=len(options),  # Maximum number of selections
+            options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_members = [discord.utils.get(interaction.guild.members, id=int(member_id)) for member_id in self.values]
+        random.shuffle(selected_members)
+        teams = [selected_members[i:i + 2] for i in range(0, len(selected_members), 2)]
+        if len(selected_members) % 2 == 1:
+            teams[-1].append('Solo player: ' + teams[-1].pop().display_name)
+        embed = discord.Embed(
+            title="Teams for Arena",
+            description="\n".join([f"Team {i+1}: {', '.join([member.display_name for member in team])}" for i, team in enumerate(teams)]),
+            color=discord.Color.green()
+        )
+        await interaction.response.edit_message(content="", embed=embed, view=None)
+
+class MemberSelectionModal(discord.ui.Modal):
+    def __init__(self):
+        super().__init__(title="Select Members for Teams")
+        self.members_input = discord.ui.TextInput(
+            label="Enter member names or mentions",
+            style=discord.TextStyle.paragraph,
+            placeholder="Type member names separated by commas...",
+            required=True,
+            max_length=1000
+        )
+        self.add_item(self.members_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        member_names = self.members_input.value.split(',')
+        members = []
+        for name in member_names:
+            member = discord.utils.get(interaction.guild.members, name=name.strip())
+            if member:
+                members.append(member)
+        if len(members) >= 2:
+            random.shuffle(members)
+            teams = [members[i:i + 2] for i in range(0, len(members), 2)]
+            if len(members) % 2 == 1:
+                teams[-1].append('Solo player: ' + teams[-1].pop())
+            embed = discord.Embed(
+                title="Teams for Arena",
+                description="\n".join([f"Team {i+1}: {', '.join([member.display_name for member in team])}" for i, team in enumerate(teams)]),
+                color=discord.Color.green()
+            )
+            await interaction.response.send_message(embed=embed)
+        else:
+            await interaction.response.send_message("Not enough members selected.", ephemeral=True)
 
         
 class AddChampionModal(Modal):
@@ -82,46 +145,6 @@ class AddChampionModal(Modal):
         else:
             await interaction.response.send_message(content=f"**{entered_champion}** is already in your win-list.", ephemeral=True)
         
-        
-class ArenaHelpView(View):
-    def __init__(self, interaction: discord.Interaction):
-        super().__init__(timeout=None)
-        self.interaction = interaction
-
-        # Create buttons for different commands
-        teams_button = Button(
-            label="Generate Teams",
-            style=discord.ButtonStyle.success  # Green
-        )
-        teams_button.callback = self.generate_teams
-        self.add_item(teams_button)
-
-        champions_button = Button(
-            label="Generate Champions",
-            style=discord.ButtonStyle.primary  # Yellow not available, so using primary (blue)
-        )
-        champions_button.callback = self.generate_champions
-        self.add_item(champions_button)
-
-        list_button = Button(
-            label="List All Players",
-            style=discord.ButtonStyle.secondary  # Blue
-        )
-        list_button.callback = self.list_players
-        self.add_item(list_button)
-
-    async def generate_teams(self, interaction: discord.Interaction):
-        await interaction.response.defer()  # Acknowledge the interaction
-        await generate_teams(self.interaction)
-
-    async def generate_champions(self, interaction: discord.Interaction):
-        await interaction.response.defer()  # Acknowledge the interaction
-        await generate_champions(self.interaction)
-
-    async def list_players(self, interaction: discord.Interaction):
-        await interaction.response.defer()  # Acknowledge the interaction
-        await list_players(self.interaction)
-
 
 class ShowWinsView(View):
     def __init__(self, user_id, ctx):
@@ -460,25 +483,6 @@ async def list_commands(interaction: discord.Interaction):
     # Create a View with buttons and attach it to the embed
     await interaction.response.send_message(embed=embed)
 
-
-async def list_players(ctx):
-    if ctx.author.voice and ctx.author.voice.channel:
-        voice_channel = ctx.author.voice.channel
-        members = voice_channel.members
-
-        embed = discord.Embed(
-            title=f"List of players in {voice_channel.name}",
-            color=discord.Color.blue()
-        )
-        for member in members:
-            if member.id not in player_numbers:
-                player_numbers[member.id] = len(player_numbers) + 1
-            embed.add_field(name=f"{player_numbers[member.id]}", value=member.name, inline=False)
-        await ctx.send(embed=embed)
-    else:
-        print("hallo")
-        await ctx.send("You need to be in a voice channel to use this command!")
-
 @tree.command(
     name="champions",
     description="Generate 2 random champions NEW",
@@ -494,35 +498,44 @@ async def champions(interaction: discord.Interaction, teammate: discord.Member =
 
 @tree.command(
     name="teams",
-    description="Generate teams of members in voice channel",
+    description="Generate teams from selected server members or voice channel",
     guild=discord.Object(id=GUILD_ID)
 )
-async def generate_teams(interaction: discord.Interaction):
-    voice_state = interaction.user.voice  # Get the voice state of the user who triggered the interaction
-    if voice_state and voice_state.channel:
-        voice_channel = voice_state.channel
-        members = [member for member in voice_channel.members if not member.bot]
-
-        if len(members) == 0:
-            await interaction.response.send_message("No players match these numbers. Check `/arena list` for more information.")
+@app_commands.describe(select_members="Set to yes to select members manually.")
+@app_commands.choices(select_members=[
+    app_commands.Choice(name="yes", value="yes"),
+    app_commands.Choice(name="no", value="no")
+])
+async def generate_teams(interaction: discord.Interaction, select_members: str = "no"):
+    if select_members == "yes":
+        # Collect all non-bot members for selection
+        members = [member for member in interaction.guild.members if not member.bot]
+        if members:
+            view = TeamMemberSelectionView(members)
+            await interaction.response.send_message("Select members for your teams:", view=view)
         else:
-            random.shuffle(members)
-            teams = []
-            while len(members) > 1:
-                team = [members.pop().display_name, members.pop().display_name]
-                teams.append(team)
-            if members:
-                solo = members.pop().display_name
-                teams.append([solo])
-
-            embed = discord.Embed(
-                title="Teams for Arena",
-                description="\n".join([f"Team {i+1}: {', '.join(team)}" for i, team in enumerate(teams)]),
-                color=discord.Color.green()
-            )
-            await interaction.response.send_message(embed=embed)
+            await interaction.response.send_message("No members available for selection.", ephemeral=True)
     else:
-        await interaction.response.send_message("You need to be in a voice channel to use this command!")
+        # Generate teams from voice channel members
+        voice_state = interaction.user.voice
+        if voice_state and voice_state.channel:
+            members = [member for member in voice_state.channel.members if not member.bot]
+            if len(members) >= 2:
+                random.shuffle(members)
+                teams = [members[i:i + 2] for i in range(0, len(members), 2)]
+                if len(members) % 2 == 1:
+                    teams[-1].append('Solo player: ' + teams[-1].pop().display_name)
+                embed = discord.Embed(
+                    title="Teams for Arena",
+                    description="\n".join([f"Team {i+1}: {', '.join([member.display_name for member in team])}" for i, team in enumerate(teams)]),
+                    color=discord.Color.green()
+                )
+                await interaction.response.send_message(embed=embed)
+            else:
+                await interaction.response.send_message("Not enough members in the voice channel.", ephemeral=True)
+        else:
+            await interaction.response.send_message("You need to be in a voice channel to use this command!", ephemeral=True)
+
 
 async def generate_champions(interaction, reroll_count=0, max_rerolls=2, teammate_name=None, is_next_game=False):
     author = interaction.user.name 
