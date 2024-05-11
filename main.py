@@ -288,17 +288,17 @@ class RemoveChampionView(View):
 
 
 class SeeAllLeaderboardView(View):
-    def __init__(self, ctx):
+    def __init__(self, interaction: discord.Interaction):
         super().__init__()
         # Define the 'See All' button
         self.show_more_button = Button(label="See All", style=discord.ButtonStyle.primary)
         self.show_more_button.callback = self.show_more_callback
-        self.ctx = ctx  # Store the context to use in callback
+        self.interaction = interaction  # Store the context to use in callback
         self.add_item(self.show_more_button)
 
     async def show_more_callback(self, interaction: discord.Interaction):
         # Call list_leaderboard when the button is clicked
-        await list_leaderboard(self.ctx)
+        await list_leaderboard(interaction)
         # You can add an acknowledgment message or update the original message here if needed
         await interaction.response.defer()  # Optionally respond to the interaction without sending a message
 
@@ -343,12 +343,17 @@ def split_leaderboard(leaderboard, length=3):
             break
     return limited_items
 
-async def send_leaderboard_image(ctx):
+@tree.command(
+    name="leaderboard_image",
+    description="Shows leaderboard image (WORK IN PROGRESS)",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def send_leaderboard_image(interaction: discord.Interaction):
     wins_data = load_champion_wins()
     leaderboard = {}
 
     for id, info in wins_data.items():
-        user = discord.utils.get(ctx.guild.members, name=info['name'])
+        user = discord.utils.get(interaction.guild.members, name=info['name'])
         if user:
             leaderboard[id] = len(info['wins'])
 
@@ -359,12 +364,12 @@ async def send_leaderboard_image(ctx):
     avatar_info = [fetch_discord_avatar_and_username(user_id, BOT_TOKEN) for user_id in leaderboard.keys()]
 
     # Generate the leaderboard image
-    file_path = generate_leaderboard_with_avatars(leaderboard, avatar_info)
+    file_path = await generate_leaderboard_with_avatars(leaderboard, avatar_info)
 
     # Send the image to the Discord channel
     file = discord.File(file_path, filename="leaderboard.png")
-    view = SeeAllLeaderboardView(ctx)  # Initialize the view with the current context
-    await ctx.send(file=file, view=view)
+    view = SeeAllLeaderboardView(interaction=interaction)  # Initialize the view with the current context
+    await interaction.response.send_message(file=file, view=view)
 
 @tree.command(
     name="leaderboard",
@@ -405,10 +410,9 @@ async def list_commands(interaction: discord.Interaction):
     )
 
     commands = [
-        "`/teams` \nGenerate random teams based on players in the current voice channel, or specified numbers (see /arena players).",
+        "`/teams [members]` \nGenerate random teams based on players in the current voice channel, or specified members.",
         "`/champions [member]` \nGenerate random champions for yourself or with specified teammate.",
         "`/wins [username]` \nShow the win list of the command issuer or a specified user.",
-        "`/players` \nList all players in the current voice channel.",
         "`/leaderboard` \nShow leaderboard of current server."
     ]
 
@@ -420,7 +424,7 @@ async def list_commands(interaction: discord.Interaction):
         )
 
     # Create a View with buttons and attach it to the embed
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @tree.command(
     name="champions",
@@ -582,7 +586,8 @@ def fetch_discord_avatar_and_username(user_id, BOT_TOKEN):
         print(f"Failed to fetch data for user {user_id}: {response.status_code} - {response.text}")
         return "path_to_default_avatar.png", 'Unknown User'
 
-def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
+
+async def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     """Generates and saves a leaderboard image with avatars, usernames, and scores."""
     if not os.path.exists('leaderboards'):
         os.makedirs('leaderboards')
@@ -626,8 +631,6 @@ def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     file_path = 'leaderboards/leaderboard_with_avatars.png'
     background.save(file_path)
     return file_path
-
-
 
 @client.event
 async def on_ready():
