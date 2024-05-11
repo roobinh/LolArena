@@ -365,6 +365,7 @@ async def get_wins_embed_and_view(interaction, target_user=None):
     description="Shows your wins",
     guild=discord.Object(id=GUILD_ID)
 )
+@app_commands.describe(member="Show wins of specific user")
 async def list_wins(interaction: discord.Interaction, member: discord.Member = None):
     embed, view = await get_wins_embed_and_view(interaction, member)
     await interaction.response.send_message(embed=embed, view=view)
@@ -435,27 +436,27 @@ async def list_commands(interaction: discord.Interaction):
         color=discord.Color.blue()
     )
     embed.add_field(
-        name="/arena [user numbers]",
+        name="/teams",
         value="Generate random teams based on players in the current voice channel, or specified numbers (see /arena players).",
         inline=False
     )
     embed.add_field(
-        name="/arena champions [username]",
+        name="/champions [member]",
         value="Generate random champions for yourself or with specified teammate.",
         inline=False
     )
     embed.add_field(
-        name="/arena wins [username]",
+        name="/wins [username]",
         value="Show the win list of the command issuer or a specified user.",
         inline=False
     )
     embed.add_field(
-        name="/arena players",
+        name="/players",
         value="List all players in the current voice channel.",
         inline=False
     )
     embed.add_field(
-        name="/arena help",
+        name="/help",
         value="Show this help message with detailed information about all commands.",
         inline=False
     )
@@ -487,7 +488,7 @@ async def list_players(ctx):
     description="Generate 2 random champions NEW",
     guild=discord.Object(id=GUILD_ID)
 )
-@app_commands.describe(teammate="Type the name of your teammate to generate a team of 3 champions")
+@app_commands.describe(teammate="Type the name of your teammate to generate a team of 2 champions")
 async def champions(interaction: discord.Interaction, teammate: discord.Member = None):
     if teammate:
         await generate_champions(interaction, 0, 2, teammate.display_name)
@@ -526,8 +527,6 @@ async def generate_teams(interaction: discord.Interaction):
             await interaction.response.send_message(embed=embed)
     else:
         await interaction.response.send_message("You need to be in a voice channel to use this command!")
-
-
 
 async def generate_champions(interaction, reroll_count=0, max_rerolls=2, teammate_name=None, is_next_game=False):
     author = interaction.user.name 
@@ -585,9 +584,6 @@ async def generate_champions(interaction, reroll_count=0, max_rerolls=2, teammat
         await interaction.response.send_message(embed=embed, view=view)
     else:
         await interaction.response.edit_message(embed=embed, view=view)
-
-# Note: You also need to adjust how you call generate_champions in command_champions
-
 
 def is_git_repo_up_to_date():
     try:
