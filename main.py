@@ -184,9 +184,8 @@ class ChampionButtonView(View):
         await generate_champions(interaction, self.reroll_count, self.max_rerolls, self.teammate_name)
 
     async def next_game(self, interaction: discord.Interaction):
-        clicked_user = interaction.user.name
         await interaction.response.defer()
-        await generate_champions(None, 0, 2, clicked_user)
+        await generate_champions(interaction, 0, 2, self.teammate_name, True)
 
     async def game_win(self, interaction: discord.Interaction):
         clicked_user = interaction.user
@@ -366,8 +365,8 @@ async def get_wins_embed_and_view(interaction, target_user=None):
     description="Shows your wins",
     guild=discord.Object(id=GUILD_ID)
 )
-async def list_wins(interaction: discord.Interaction, target_user: discord.Member = None):
-    embed, view = await get_wins_embed_and_view(interaction, target_user)
+async def list_wins(interaction: discord.Interaction, member: discord.Member = None):
+    embed, view = await get_wins_embed_and_view(interaction, member)
     await interaction.response.send_message(embed=embed, view=view)
 
 
@@ -483,23 +482,18 @@ async def list_players(ctx):
         print("hallo")
         await ctx.send("You need to be in a voice channel to use this command!")
 
-
 @tree.command(
     name="champions",
     description="Generate 2 random champions NEW",
     guild=discord.Object(id=GUILD_ID)
 )
 @app_commands.describe(teammate="Type the name of your teammate to generate a team of 3 champions")
-async def champions(ctx: commands.Context, teammate: str = None):
-    print("command_champions")
+async def champions(interaction: discord.Interaction, teammate: discord.Member = None):
     if teammate:
-        member = discord.utils.get(ctx.guild.members, display_name=teammate)
-        if member:
-            await generate_champions(ctx, 0, 2, member.display_name)
-        else:
-            await ctx.send("Member not found.")
+        await generate_champions(interaction, 0, 2, teammate.display_name)
     else:
-        await generate_champions(ctx)
+        await generate_champions(interaction)
+
 
 @tree.command(
     name="teams",
@@ -535,7 +529,7 @@ async def generate_teams(interaction: discord.Interaction):
 
 
 
-async def generate_champions(interaction, reroll_count=0, max_rerolls=2, teammate_name=None):
+async def generate_champions(interaction, reroll_count=0, max_rerolls=2, teammate_name=None, is_next_game=False):
     author = interaction.user.name 
     user_id = interaction.user.id  
     teammate_name = None if teammate_name == "Teammate" else teammate_name
@@ -584,7 +578,10 @@ async def generate_champions(interaction, reroll_count=0, max_rerolls=2, teammat
     )
 
     view = ChampionButtonView(interaction, [user_champion, teammate_champion], reroll_count, max_rerolls, teammate_name_actual)
-    if reroll_count == 0:
+
+    if is_next_game:
+        await interaction.followup.send(embed=embed, view=view) 
+    elif reroll_count == 0:
         await interaction.response.send_message(embed=embed, view=view)
     else:
         await interaction.response.edit_message(embed=embed, view=view)
