@@ -442,31 +442,20 @@ async def list_commands(interaction: discord.Interaction):
         color=discord.Color.blue()
     )
 
-    embed.add_field(
-        name="",
-        value="`/teams` \nGenerate random teams based on players in the current voice channel, or specified numbers (see /arena players).",
-        inline=False
-    )
-    embed.add_field(
-        name="",
-        value="`/champions [member]` \nGenerate random champions for yourself or with specified teammate.",
-        inline=False
-    )
-    embed.add_field(
-        name="",
-        value="`/wins [username]` \nShow the win list of the command issuer or a specified user.",
-        inline=False
-    )
-    embed.add_field(
-        name="",
-        value="`/players` \nList all players in the current voice channel.",
-        inline=False
-    )
-    embed.add_field(
-        name="",
-        value="`/leaderboard` \nShow leaderboard of current server.",
-        inline=False
-    )
+    commands = [
+        "`/teams` \nGenerate random teams based on players in the current voice channel, or specified numbers (see /arena players).",
+        "`/champions [member]` \nGenerate random champions for yourself or with specified teammate.",
+        "`/wins [username]` \nShow the win list of the command issuer or a specified user.",
+        "`/players` \nList all players in the current voice channel.",
+        "`/leaderboard` \nShow leaderboard of current server."
+    ]
+
+    for command in commands:
+        embed.add_field(
+            name="",
+            value=command,
+            inline=False
+        )
 
     # Create a View with buttons and attach it to the embed
     await interaction.response.send_message(embed=embed)
