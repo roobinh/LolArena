@@ -61,9 +61,7 @@ class AddChampionModal(Modal):
 
         champion_wins = load_champion_wins()
         user_key = str(self.user_id)
-        
-        champion_wins = load_champion_wins()
-        user_key = str(self.user_id)
+
         if user_key not in champion_wins:
             champion_wins[user_key] = {"name": interaction.user.name, "wins": []}
         elif "wins" not in champion_wins[user_key]:
@@ -260,7 +258,7 @@ class RemoveChampionModal(Modal):
             else:
                 status_message = f"**{entered_champion_filtered}** is not in your win-list."
 
-            embed, view = await list_wins(self.ctx, interaction.user, as_embed=True)
+            embed, view = await get_wins_embed_and_view(interaction, interaction.user)
             await interaction.response.edit_message(content=status_message, embed=embed, view=view)
         else:
             status_message = f"**{entered_champion}** is not a valid champion."
@@ -279,7 +277,7 @@ class AddChampionView(View):
     async def add_champion_callback(self, interaction: discord.Interaction):
         # Ensure only the intended user can interact
         if str(interaction.user.id) != str(self.user_id):
-            await interaction.response.send_message("You can only edit your own win list. Use `/arena wins` to see your own win list.", ephemeral=True)
+            await interaction.response.send_message("You can only edit your own win list. Use `/wins` to see your own win list.", ephemeral=True)
             return
 
         # Show the modal to add a champion, passing ctx to the modal
@@ -371,7 +369,6 @@ async def get_wins_embed_and_view(interaction, target_user=None):
 async def list_wins(interaction: discord.Interaction, target_user: discord.Member = None):
     embed, view = await get_wins_embed_and_view(interaction, target_user)
     await interaction.response.send_message(embed=embed, view=view)
-
 
 
 def split_leaderboard(leaderboard, length=3):
