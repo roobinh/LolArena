@@ -50,7 +50,7 @@ class TeamMemberSelectionView(discord.ui.View):
 class TeamMemberSelectMenu(discord.ui.Select):
     def __init__(self, members):
         options = [
-            discord.SelectOption(label=member.display_name, value=str(member.id)) for member in members
+            discord.SelectOption(label=member.name, value=str(member.id)) for member in members  # Using `member.name` instead of `member.display_name`
         ]
         super().__init__(
             placeholder="Select members for the team...",
@@ -64,13 +64,14 @@ class TeamMemberSelectMenu(discord.ui.Select):
         random.shuffle(selected_members)
         teams = [selected_members[i:i + 2] for i in range(0, len(selected_members), 2)]
         if len(selected_members) % 2 == 1:
-            teams[-1].append('Solo player: ' + teams[-1].pop().display_name)
+            teams[-1].append('Solo player: ' + teams[-1].pop().name)  # Using `name` instead of `display_name`
         embed = discord.Embed(
             title="Teams for Arena",
-            description="\n".join([f"Team {i+1}: {', '.join([member.display_name for member in team])}" for i, team in enumerate(teams)]),
+            description="\n".join([f"Team {i+1}: {', '.join([member.name for member in team])}" for i, team in enumerate(teams)]),
             color=discord.Color.green()
         )
         await interaction.response.edit_message(content="", embed=embed, view=None)
+
 
 
 class AddChampionModal(Modal):
