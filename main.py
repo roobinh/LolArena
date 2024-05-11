@@ -298,7 +298,8 @@ class SeeAllLeaderboardView(View):
 
     async def show_more_callback(self, interaction: discord.Interaction):
         # Call list_leaderboard when the button is clicked
-        await list_leaderboard(interaction)
+        embed, view = await create_leaderboard(interaction)
+        await interaction.response.send_message(embed=embed, view=view)
         # You can add an acknowledgment message or update the original message here if needed
         await interaction.response.defer()  # Optionally respond to the interaction without sending a message
 
@@ -349,34 +350,26 @@ def split_leaderboard(leaderboard, length=3):
     guild=discord.Object(id=GUILD_ID)
 )
 async def send_leaderboard_image(interaction: discord.Interaction):
-    wins_data = load_champion_wins()
-    leaderboard = {}
-
-    for id, info in wins_data.items():
-        user = discord.utils.get(interaction.guild.members, name=info['name'])
-        if user:
-            leaderboard[id] = len(info['wins'])
-
-    leaderboard = dict(sorted(leaderboard.items(), key=lambda item: item[1], reverse=True))
-    leaderboard = split_leaderboard(leaderboard)
-    
-    # Fetch avatars and usernames
-    avatar_info = [fetch_discord_avatar_and_username(user_id, BOT_TOKEN) for user_id in leaderboard.keys()]
+    # Acknowledge the interaction and inform the user that the image is being generated.
+    await interaction.response.defer()  # Use ephemeral if you want it to be visible only to the user
+    await interaction.followup.send("Generating the leaderboard image, please wait...")
 
     # Generate the leaderboard image
+    wins_data = load_champion_wins()
+    leaderboard = {id: len(info['wins']) for id, info in wins_data.items() if discord.utils.get(interaction.guild.members, name=info['name'])}
+
+    # Sort and split the leaderboard
+    leaderboard = dict(sorted(leaderboard.items(), key=lambda item: item[1], reverse=True))
+    avatar_info = [fetch_discord_avatar_and_username(user_id, BOT_TOKEN) for user_id in leaderboard.keys()]
     file_path = await generate_leaderboard_with_avatars(leaderboard, avatar_info)
 
-    # Send the image to the Discord channel
+    # Replace the loading message with the actual image
     file = discord.File(file_path, filename="leaderboard.png")
     view = SeeAllLeaderboardView(interaction=interaction)  # Initialize the view with the current context
-    await interaction.response.send_message(file=file, view=view)
+    await interaction.edit_original_response(content="", attachments=[file], view=view)
 
-@tree.command(
-    name="leaderboard",
-    description="Show leaderboard of server",
-    guild=discord.Object(id=GUILD_ID)
-)
-async def list_leaderboard(interaction: discord.Interaction):
+
+async def create_leaderboard(interaction: discord.Interaction): 
     WINS_FILE = load_champion_wins()
     leaderboard = {}
 
@@ -395,6 +388,16 @@ async def list_leaderboard(interaction: discord.Interaction):
     ) 
 
     view = View()
+
+    return embed, view
+
+@tree.command(
+    name="leaderboard",
+    description="Show leaderboard of server",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def list_leaderboard(interaction: discord.Interaction):
+    embed, view = await create_leaderboard(interaction)
     await interaction.response.send_message(embed=embed, view=view)
 
 @tree.command(
@@ -595,38 +598,28 @@ async def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     background = Image.open('assets/leaderboard_bg1.png').convert('RGBA')
     fonts = {
         0: ImageFont.truetype("assets/Heavitas.ttf", 28),  # Larger font for 1st place
-        1: ImageFont.truetype("assets/Heavitas.ttf", 18),  # Smaller font for 2nd place
-        2: ImageFont.truetype("assets/Heavitas.ttf", 18)   # Smaller font for 3rd place
+        1: ImageFont.truetype("assets/Heavitas.ttf", 20),  # Standard font for others
+        2: ImageFont.truetype("assets/Heavitas.ttf", 20)
     }
 
-    # Define placement coordinates and sizes for each position based on the number of entries
-    num_entries = len(leaderboard_data)
-    if num_entries == 1:
-        placements = {0: (371, 238, 119, 119)}  # Only first place
-        text_offsets = {0: (371, 370)}
-    elif num_entries == 2:
-        placements = {0: (239, 238, 119, 119), 1: (547, 238, 119, 119)}  # First and second places swapped
-        text_offsets = {0: (239, 370), 1: (547, 370)}
-    else:
-        placements = {0: (547, 238, 77, 77), 1: (371, 238, 119, 119), 2: (239, 238, 77, 77)}
-        text_offsets = {0: (547, 325), 1: (371, 370), 2: (239, 325)}
+    # Configuration for avatar and text placement
+    config = [
+        {"coords": (414, 250, 152, 152), "text_offset": (420, 420)},  # First place
+        {"coords": (245, 250, 105, 105), "text_offset": (255, 365)},  # Second place
+        {"coords": (630, 250, 105, 105), "text_offset": (640, 420)}   # Third place
+    ]
 
     draw = ImageDraw.Draw(background)
-    for index, ((user_id, score), (avatar_url, username)) in enumerate(zip(sorted(leaderboard_data.items(), key=lambda item: item[1], reverse=True)[:3], avatar_info)):
-        if avatar_url.startswith('http'):
-            response = requests.get(avatar_url)
-            avatar_image = Image.open(BytesIO(response.content))
-        else:
-            avatar_image = Image.open(avatar_url)  # Open from local path if URL is not valid
-
-        avatar_image = avatar_image.convert('RGBA')
-        x, y, width, height = placements[index]
-        avatar_image = avatar_image.resize((width, height))
+    print(f"leaderboard_data = {leaderboard_data}")
+    sorted_leaderboard = sorted(leaderboard_data.items(), key=lambda item: item[1], reverse=True)[:3]
+    print(f"sorted_leaderboard = {sorted_leaderboard}")
+    
+    for index, ((user_id, score), (avatar_url, username)) in enumerate(zip(sorted_leaderboard, avatar_info)):
+        avatar_image = Image.open(BytesIO(requests.get(avatar_url).content) if avatar_url.startswith('http') else avatar_url)
+        avatar_image = avatar_image.convert('RGBA').resize((config[index]["coords"][2], config[index]["coords"][3]))
         mask = avatar_image.split()[3] if 'A' in avatar_image.getbands() else None
-        background.paste(avatar_image, (x, y), mask)
-
-        text_x, text_y = text_offsets[index]
-        draw.text((text_x, text_y), f"{score} Wins", font=fonts[index], fill='#553EF9')
+        background.paste(avatar_image, config[index]["coords"][:2], mask)
+        draw.text(config[index]["text_offset"], f"{score} Wins", font=fonts[index], fill='#553EF9')
 
     file_path = 'leaderboards/leaderboard_with_avatars.png'
     background.save(file_path)
