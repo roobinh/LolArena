@@ -41,24 +41,10 @@ tree = app_commands.CommandTree(client)
 
 
 class TeamMemberSelectionView(discord.ui.View):
-    def __init__(self, members, page=0):
+    def __init__(self, members):
         super().__init__()
-        # Pagination parameters
-        items_per_page = 25
-        start = page * items_per_page
-        end = start + items_per_page
-        paginated_members = members[start:end]
-
-        # Add paginated select menu to the view
-        self.add_item(TeamMemberSelectMenu(paginated_members))
-        
-        # Add buttons to navigate pages if necessary
-        if len(members) > items_per_page:
-            if start > 0:
-                self.add_item(discord.ui.Button(label="<<", style=discord.ButtonStyle.primary, row=1, custom_id="prev_page"))
-            if end < len(members):
-                self.add_item(discord.ui.Button(label=">>", style=discord.ButtonStyle.primary, row=1, custom_id="next_page"))
-
+        # Add a select menu with the members in the voice channel
+        self.add_item(TeamMemberSelectMenu(members))
 
 
 class TeamMemberSelectMenu(discord.ui.Select):
@@ -464,13 +450,16 @@ async def champions(interaction: discord.Interaction, teammate: discord.Member =
 ])
 async def generate_teams(interaction: discord.Interaction, select_members: str = "no"):
     if select_members == "yes":
-        # Collect all non-bot members for selection
-        members = [member for member in interaction.guild.members if not member.bot]
-        if members:
-            view = TeamMemberSelectionView(members)
-            await interaction.response.send_message("Select members for your teams:", view=view)
+        voice_state = interaction.user.voice
+        if voice_state and voice_state.channel:
+            members = [member for member in voice_state.channel.members if not member.bot]
+            if members:
+                view = TeamMemberSelectionView(members)
+                await interaction.response.send_message("Select members for your teams:", view=view)
+            else:
+                await interaction.response.send_message("No members available for selection.", ephemeral=True)
         else:
-            await interaction.response.send_message("No members available for selection.", ephemeral=True)
+            await interaction.response.send_message("You need to be in a voice channel to use this command!", ephemeral=True)
     else:
         # Generate teams from voice channel members
         voice_state = interaction.user.voice
