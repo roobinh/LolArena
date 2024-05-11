@@ -336,6 +336,7 @@ async def get_wins_embed_and_view(interaction, target_user=None):
 )
 @app_commands.describe(member="Show wins of specific user")
 async def list_wins(interaction: discord.Interaction, member: discord.Member = None):
+    interaction.response.defer()
     embed, view = await get_wins_embed_and_view(interaction, member)
     await interaction.response.send_message(embed=embed, view=view)
 
@@ -432,7 +433,7 @@ async def list_commands(interaction: discord.Interaction):
 
 @tree.command(
     name="champions",
-    description="Generate 2 random champions NEW",
+    description="Generate 2 random champions",
 )
 @app_commands.describe(teammate="Type the name of your teammate to generate a team of 2 champions")
 async def champions(interaction: discord.Interaction, teammate: discord.Member = None):
