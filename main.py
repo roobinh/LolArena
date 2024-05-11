@@ -622,7 +622,7 @@ async def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     config = [
         {"coords": (414, 250, 152, 152), "text_offset": (420, 420)},  # First place
         {"coords": (245, 250, 105, 105), "text_offset": (255, 365)},  # Second place
-        {"coords": (630, 250, 105, 105), "text_offset": (640, 420)}   # Third place
+        {"coords": (630, 250, 105, 105), "text_offset": (640, 365)}   # Third place
     ]
 
     draw = ImageDraw.Draw(background)
