@@ -64,7 +64,7 @@ class TeamMemberSelectMenu(discord.ui.Select):
         random.shuffle(selected_members)
         teams = [selected_members[i:i + 2] for i in range(0, len(selected_members), 2)]
         if len(selected_members) % 2 == 1:
-            teams[-1].append('Solo player: ' + teams[-1].pop().name)  # Using `name` instead of `display_name`
+            teams[-1].append(teams[-1].pop().name)  # Using `name` instead of `display_name`
         embed = discord.Embed(
             title="Teams for Arena",
             description="\n".join([f"Team {i+1}: {', '.join([member.name for member in team])}" for i, team in enumerate(teams)]),
