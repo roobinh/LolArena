@@ -464,11 +464,23 @@ async def generate_teams(interaction: discord.Interaction, select_members: str =
             if len(members) >= 2:
                 random.shuffle(members)
                 teams = [members[i:i + 2] for i in range(0, len(members), 2)]
+                solo_player_display = None
                 if len(members) % 2 == 1:
-                    teams[-1].append('Solo player: ' + teams[-1].pop().display_name)
+                    solo_player = teams[-1].pop()
+                    teams[-1].append(solo_player)  # Keep as member
+                    solo_player_display = 'Solo player: ' + solo_player.display_name
+
+                description_lines = []
+                for i, team in enumerate(teams):
+                    if solo_player_display and i == len(teams) - 1:  # Check if this is the last team with a solo player
+                        description_lines.append(f"Team {i+1}: {', '.join(member.display_name for member in team[:-1])}, {solo_player_display}")
+                    else:
+                        description_lines.append(f"Team {i+1}: {', '.join(member.display_name for member in team)}")
+                
+                description = "\n".join(description_lines)
                 embed = discord.Embed(
                     title="Teams for Arena",
-                    description="\n".join([f"Team {i+1}: {', '.join([member.display_name for member in team])}" for i, team in enumerate(teams)]),
+                    description=description,
                     color=discord.Color.green()
                 )
                 await interaction.response.send_message(embed=embed)
@@ -476,6 +488,7 @@ async def generate_teams(interaction: discord.Interaction, select_members: str =
                 await interaction.response.send_message("Not enough members in the voice channel.", ephemeral=True)
         else:
             await interaction.response.send_message("You need to be in a voice channel to use this command!", ephemeral=True)
+
 
 
 async def generate_champions(interaction: discord.Interaction, reroll_count=0, max_rerolls=2, teammate_name=None, is_next_game=False):
