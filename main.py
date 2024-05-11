@@ -1,30 +1,52 @@
 import os, json, random, discord, subprocess, requests
+from typing import List
 from dotenv import dotenv_values
+from discord import app_commands
 from discord.ext import commands
 from discord.ui import Button, View, Modal, TextInput
-from discord.ext.commands import MissingPermissions
 from datetime import datetime
-import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
-def load_champion_list(file_path="lol_champions.json"):
+def load_champion_list(file_path="LOL_CHAMPIONS.json"):
     with open(file_path, "r") as file:
         data = json.load(file)
     return data["champions"]
 
+# Helper function to load or initialize the wins data
+def load_champion_wins():
+    if os.path.exists(WINS_FILE):
+        try:
+            with open(WINS_FILE, "r") as file:
+                return json.load(file)
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
 # List of League of Legends champions
-lol_champions = load_champion_list()
+LOL_CHAMPIONS = load_champion_list()
+WINS_FILE = "champion_wins.json"
 
 # Get tokens
 env = dotenv_values('.env')
-bot_token = env.get('BOT_TOKEN_DEV') or env.get('BOT_TOKEN')
+BOT_TOKEN = env.get('BOT_TOKEN_DEV') or env.get('BOT_TOKEN')
+GUILD_ID = env.get("GUILD_ID", None)
 
 # Bot Variables
 intents = discord.Intents.all()
 intents.voice_states = True
 intents.message_content = True
-bot = commands.Bot(command_prefix="/", intents=intents)
+client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
+
+
+class TeamMemberSelectionView(discord.ui.View):
+    def __init__(self, members):
+        super().__init__()
+        # Create the select menu and add it to the view
+        self.add_item(TeamMemberSelectMenu(members))
+
+
 
 # Dictionary to store assigned numbers to players
 player_numbers = {}
@@ -507,55 +529,68 @@ async def generate_teams(ctx, arg=None):
 
         if len(selected_players) == 0:
             await ctx.send("No players match these numbers. Check `/arena list` for more information.")
+        # Collect all non-bot members for selection
+        members = [member for member in interaction.guild.members if not member.bot]
+        if members:
+            view = TeamMemberSelectionView(members)
+            await interaction.response.send_message("Select members for your teams:", view=view)
         else:
-            random.shuffle(selected_players)
-            teams = []
-            while len(selected_players) > 1:
-                team = [selected_players.pop().name, selected_players.pop().name]
-                teams.append(team)
-            if selected_players:
-                solo = selected_players.pop().name
-                teams.append([solo])
-
-            embed = discord.Embed(
-                title="Teams for Arena",
-                description="\n".join([f"Team {i+1}: {', '.join(team)}" for i, team in enumerate(teams)]),
-                color=discord.Color.green()
-            )
-            await ctx.send(embed=embed)
+            await interaction.response.send_message("No members available for selection.", ephemeral=True)
     else:
-        print("hallo2")
-        await ctx.send("You need to be in a voice channel to use this command!")
+        # Generate teams from voice channel members
+        voice_state = interaction.user.voice
+        if voice_state and voice_state.channel:
+            members = [member for member in voice_state.channel.members if not member.bot]
+            if len(members) >= 2:
+                random.shuffle(members)
+                teams = [members[i:i + 2] for i in range(0, len(members), 2)]
+                if len(members) % 2 == 1:
+                    teams[-1].append('Solo player: ' + teams[-1].pop().display_name)
+                embed = discord.Embed(
+                    title="Teams for Arena",
+                    description="\n".join([f"Team {i+1}: {', '.join([member.display_name for member in team])}" for i, team in enumerate(teams)]),
+                    color=discord.Color.green()
+                )
+                await interaction.response.send_message(embed=embed)
+            else:
+                await interaction.response.send_message("Not enough members in the voice channel.", ephemeral=True)
+        else:
+            await interaction.response.send_message("You need to be in a voice channel to use this command!", ephemeral=True)
 
-async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=2, teammate_name=None):
+
+async def generate_champions(interaction: discord.Interaction, reroll_count=0, max_rerolls=2, teammate_name=None, is_next_game=False):
+    author = interaction.user.name 
+    user_id = interaction.user.id  
     teammate_name = None if teammate_name == "Teammate" else teammate_name
-    user_id = ctx.author.id
-    author = ctx.author.name
+    if teammate_name == author:
+        await interaction.response.send_message("You can not team up with yourself.", ephemeral=True)
+        return
 
     champion_wins = load_champion_wins()
     user_wins = [win["champion"] for win in champion_wins.get(str(user_id), {}).get("wins", [])]
-    available_for_user = [champion for champion in lol_champions if champion not in user_wins]
+    available_for_user = [champion for champion in LOL_CHAMPIONS if champion not in user_wins]
+
     if not available_for_user:
-        await ctx.send(f"{author}, you have won with all available champions.")
+        await interaction.response.send_message(f"{author}, you have won with all available champions.")
         return
     user_champion = random.choice(available_for_user)
 
     if teammate_name:
-        target_user = discord.utils.get(ctx.guild.members, name=teammate_name)
+        target_user = discord.utils.get(interaction.guild.members, name=teammate_name)
         if not target_user:
-            await ctx.send(f"User **{teammate_name}** not found.")
+            await interaction.response.send_message(f"User **{teammate_name}** not found.")
             return
         teammate_id = target_user.id
         teammate_name_actual = teammate_name
         teammate_wins = [win["champion"] for win in champion_wins.get(str(teammate_id), {}).get("wins", [])]
-        available_for_teammate = [champion for champion in lol_champions if champion not in teammate_wins]
+        available_for_teammate = [champion for champion in LOL_CHAMPIONS if champion not in teammate_wins and champion != user_champion]
         if not available_for_teammate:
-            await ctx.send(f"{teammate_name_actual}, you have won with all available champions.")
+            await interaction.response.send_message(f"{teammate_name_actual}, you have won with all available champions.")
             return
         teammate_champion = random.choice(available_for_teammate)
     else:
         teammate_name_actual = "Teammate"
-        available_for_teammate = [champion for champion in lol_champions if champion != user_champion]
+        available_for_teammate = [champion for champion in LOL_CHAMPIONS if champion != user_champion]
         teammate_champion = random.choice(available_for_teammate)
 
     def clean_name(name):
@@ -568,18 +603,23 @@ async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=
 
     description = f"{author}: {user_hyperlink}\n{teammate_name_actual}: {teammate_hyperlink} \
                         \n\n _This excludes the champions you've won with._"
+    
     embed = discord.Embed(
         title="Random Champions",
         description=description,
         color=discord.Color.orange()
     )
 
-    if interaction:
-        await interaction.response.edit_message(embed=embed, view=ChampionButtonView(ctx, [user_champion, teammate_champion], reroll_count, max_rerolls, teammate_name_actual))
-    else:
-        await ctx.send(embed=embed, view=ChampionButtonView(ctx, [user_champion, teammate_champion], reroll_count, max_rerolls, teammate_name_actual))
+    view = ChampionButtonView(interaction, [user_champion, teammate_champion], reroll_count, max_rerolls, teammate_name_actual)
 
-def is_git_repo_up_to_date():
+    if is_next_game:
+        await interaction.followup.send(embed=embed, view=view) 
+    elif reroll_count == 0:
+        await interaction.response.send_message(embed=embed, view=view)
+    else:
+        await interaction.response.edit_message(embed=embed, view=view)
+
+def github_status():
     try:
         # Fetch the latest changes from the remote
         subprocess.run(["git", "fetch"], check=True)
@@ -611,10 +651,10 @@ def is_git_repo_up_to_date():
     except Exception as e:
         print("Verifying Git Status: An unexpected error occurred, probably because git is not installed.", e)
 
-def fetch_discord_avatar_and_username(user_id, bot_token):
+def fetch_discord_avatar_and_username(user_id, BOT_TOKEN):
     """Fetches the Discord avatar and username for a given user ID using the specified bot token."""
     url = f"https://discord.com/api/v9/users/{user_id}"
-    headers = {"Authorization": f"Bot {bot_token}"}
+    headers = {"Authorization": f"Bot {BOT_TOKEN}"}
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
         data = response.json()
@@ -628,11 +668,8 @@ def fetch_discord_avatar_and_username(user_id, bot_token):
         print(f"Failed to fetch data for user {user_id}: {response.status_code} - {response.text}")
         return "path_to_default_avatar.png", 'Unknown User'
 
-from PIL import Image, ImageDraw, ImageFont
 
-from PIL import Image, ImageDraw, ImageFont
-
-def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
+async def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     """Generates and saves a leaderboard image with avatars, usernames, and scores."""
     if not os.path.exists('leaderboards'):
         os.makedirs('leaderboards')
@@ -640,43 +677,60 @@ def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     background = Image.open('assets/leaderboard_bg1.png').convert('RGBA')
     fonts = {
         0: ImageFont.truetype("assets/Heavitas.ttf", 28),  # Larger font for 1st place
-        1: ImageFont.truetype("assets/Heavitas.ttf", 18),  # Smaller font for 2nd place
-        2: ImageFont.truetype("assets/Heavitas.ttf", 18)   # Smaller font for 3rd place
+        1: ImageFont.truetype("assets/Heavitas.ttf", 20),  # Standard font for others
+        2: ImageFont.truetype("assets/Heavitas.ttf", 20)
     }
 
-    # Define placement coordinates and sizes for each position based on the number of entries
-    num_entries = len(leaderboard_data)
-    if num_entries == 1:
-        placements = {0: (371, 238, 119, 119)}  # Only first place
-        text_offsets = {0: (371, 370)}
-    elif num_entries == 2:
-        placements = {0: (239, 238, 119, 119), 1: (547, 238, 119, 119)}  # First and second places swapped
-        text_offsets = {0: (239, 370), 1: (547, 370)}
-    else:
-        placements = {0: (547, 238, 77, 77), 1: (371, 238, 119, 119), 2: (239, 238, 77, 77)}
-        text_offsets = {0: (547, 325), 1: (371, 370), 2: (239, 325)}
+    # Configuration for avatar and text placement
+    config = [
+        {"coords": (414, 250, 152, 152), "text_offset": (420, 420)},  # First place
+        {"coords": (245, 250, 105, 105), "text_offset": (255, 365)},  # Second place
+        {"coords": (630, 250, 105, 105), "text_offset": (640, 420)}   # Third place
+    ]
 
     draw = ImageDraw.Draw(background)
-    for index, ((user_id, score), (avatar_url, username)) in enumerate(zip(sorted(leaderboard_data.items(), key=lambda item: item[1], reverse=True)[:3], avatar_info)):
-        if avatar_url.startswith('http'):
-            response = requests.get(avatar_url)
-            avatar_image = Image.open(BytesIO(response.content))
-        else:
-            avatar_image = Image.open(avatar_url)  # Open from local path if URL is not valid
-
-        avatar_image = avatar_image.convert('RGBA')
-        x, y, width, height = placements[index]
-        avatar_image = avatar_image.resize((width, height))
+    print(f"leaderboard_data = {leaderboard_data}")
+    sorted_leaderboard = sorted(leaderboard_data.items(), key=lambda item: item[1], reverse=True)[:3]
+    print(f"sorted_leaderboard = {sorted_leaderboard}")
+    
+    for index, ((user_id, score), (avatar_url, username)) in enumerate(zip(sorted_leaderboard, avatar_info)):
+        avatar_image = Image.open(BytesIO(requests.get(avatar_url).content) if avatar_url.startswith('http') else avatar_url)
+        avatar_image = avatar_image.convert('RGBA').resize((config[index]["coords"][2], config[index]["coords"][3]))
         mask = avatar_image.split()[3] if 'A' in avatar_image.getbands() else None
-        background.paste(avatar_image, (x, y), mask)
-
-        text_x, text_y = text_offsets[index]
-        draw.text((text_x, text_y), f"{score} Wins", font=fonts[index], fill='#553EF9')
+        background.paste(avatar_image, config[index]["coords"][:2], mask)
+        draw.text(config[index]["text_offset"], f"{score} Wins", font=fonts[index], fill='#553EF9')
 
     file_path = 'leaderboards/leaderboard_with_avatars.png'
     background.save(file_path)
     return file_path
 
 
-is_git_repo_up_to_date()
-bot.run(bot_token)
+@client.event
+async def on_ready():
+    if GUILD_ID:
+        # Register commands to a specific guild for debugging
+        guild = discord.Object(id=int(GUILD_ID))
+        tree.copy_global_to(guild=guild)
+        synced = await tree.sync(guild=guild)
+    else:
+        # Register commands globally for production
+        synced = await tree.sync()
+    print(f"{len(synced)} commands have been registered {'globally' if GUILD_ID is None else 'to guild ' + GUILD_ID}")
+
+    
+@client.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("I don't have permission to do that. Please check my role permissions.")
+    elif isinstance(error, commands.CommandNotFound):
+        pass
+    elif isinstance(error, commands.CommandInvokeError):
+        print(error)
+        await ctx.send("An error occurred while executing the command. Make sure I have the necessary permissions.")
+    else:
+        await ctx.send(f"An unexpected error occurred: {error}")
+
+
+github_status()
+client.run(BOT_TOKEN)
+
