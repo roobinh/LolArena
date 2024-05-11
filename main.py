@@ -8,7 +8,7 @@ from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
-def load_champion_list(file_path="LOL_CHAMPIONS.json"):
+def load_champion_list(file_path="lol_champions.json"):
     with open(file_path, "r") as file:
         data = json.load(file)
     return data["champions"]
