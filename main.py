@@ -84,9 +84,9 @@ class AddChampionModal(Modal):
         
         
 class ArenaHelpView(View):
-    def __init__(self, ctx):
+    def __init__(self, interaction: discord.Interaction):
         super().__init__(timeout=None)
-        self.ctx = ctx
+        self.interaction = interaction
 
         # Create buttons for different commands
         teams_button = Button(
@@ -112,15 +112,15 @@ class ArenaHelpView(View):
 
     async def generate_teams(self, interaction: discord.Interaction):
         await interaction.response.defer()  # Acknowledge the interaction
-        await generate_teams(self.ctx)
+        await generate_teams(self.interaction)
 
     async def generate_champions(self, interaction: discord.Interaction):
         await interaction.response.defer()  # Acknowledge the interaction
-        await generate_champions(self.ctx)
+        await generate_champions(self.interaction)
 
     async def list_players(self, interaction: discord.Interaction):
         await interaction.response.defer()  # Acknowledge the interaction
-        await list_players(self.ctx)
+        await list_players(self.interaction)
 
 
 class ShowWinsView(View):
@@ -403,12 +403,18 @@ async def send_leaderboard_image(ctx):
     await ctx.send(file=file, view=view)
 
 
-async def list_leaderboard(ctx):
+
+@tree.command(
+    name="leaderboard",
+    description="Show leaderboard of server",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def list_leaderboard(interaction: discord.Interaction):
     WINS_FILE = load_champion_wins()
     leaderboard = {}
 
     for info in WINS_FILE.values():
-        user = discord.utils.get(ctx.guild.members, name=info['name'])
+        user = discord.utils.get(interaction.guild.members, name=info['name'])
         if user:
             leaderboard[info['name']] = len(info['wins'])
 
@@ -422,7 +428,7 @@ async def list_leaderboard(ctx):
     ) 
 
     view = View()
-    await ctx.send(embed=embed, view=view)
+    await interaction.response.send_message(embed=embed, view=view)
 
 @tree.command(
     name="help",
@@ -432,37 +438,38 @@ async def list_leaderboard(ctx):
 async def list_commands(interaction: discord.Interaction):
     embed = discord.Embed(
         title="Arena Commands",
-        description="Here are the available commands for the arena:",
+        description="Here are the available commands",
         color=discord.Color.blue()
     )
+
     embed.add_field(
-        name="/teams",
-        value="Generate random teams based on players in the current voice channel, or specified numbers (see /arena players).",
+        name="",
+        value="`/teams` \nGenerate random teams based on players in the current voice channel, or specified numbers (see /arena players).",
         inline=False
     )
     embed.add_field(
-        name="/champions [member]",
-        value="Generate random champions for yourself or with specified teammate.",
+        name="",
+        value="`/champions [member]` \nGenerate random champions for yourself or with specified teammate.",
         inline=False
     )
     embed.add_field(
-        name="/wins [username]",
-        value="Show the win list of the command issuer or a specified user.",
+        name="",
+        value="`/wins [username]` \nShow the win list of the command issuer or a specified user.",
         inline=False
     )
     embed.add_field(
-        name="/players",
-        value="List all players in the current voice channel.",
+        name="",
+        value="`/players` \nList all players in the current voice channel.",
         inline=False
     )
     embed.add_field(
-        name="/help",
-        value="Show this help message with detailed information about all commands.",
+        name="",
+        value="`/leaderboard` \nShow leaderboard of current server.",
         inline=False
     )
 
     # Create a View with buttons and attach it to the embed
-    await interaction.response.send_message(embed=embed, view=ArenaHelpView(interaction))
+    await interaction.response.send_message(embed=embed)
 
 
 async def list_players(ctx):
