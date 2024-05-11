@@ -624,6 +624,14 @@ async def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     background.save(file_path)
     return file_path
 
+@tree.command(name='sync', description='Owner only')
+async def sync(interaction: discord.Interaction):
+    if interaction.user.id == env.get("OWNER_ID"):
+        await tree.sync()
+        print('Command tree synced.')
+    else:
+        await interaction.response.send_message('You must be the owner to use this command!')
+
 
 @client.event
 async def on_ready():
@@ -650,7 +658,9 @@ async def on_command_error(ctx, error):
     else:
         await ctx.send(f"An unexpected error occurred: {error}")
 
-
+# Check github status
 github_status()
+
+# Start the program
 client.run(BOT_TOKEN)
 
