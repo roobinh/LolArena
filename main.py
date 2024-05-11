@@ -71,40 +71,6 @@ class TeamMemberSelectMenu(discord.ui.Select):
             color=discord.Color.green()
         )
         await interaction.response.edit_message(content="", embed=embed, view=None)
-
-class MemberSelectionModal(discord.ui.Modal):
-    def __init__(self):
-        super().__init__(title="Select Members for Teams")
-        self.members_input = discord.ui.TextInput(
-            label="Enter member names or mentions",
-            style=discord.TextStyle.paragraph,
-            placeholder="Type member names separated by commas...",
-            required=True,
-            max_length=1000
-        )
-        self.add_item(self.members_input)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        member_names = self.members_input.value.split(',')
-        members = []
-        for name in member_names:
-            member = discord.utils.get(interaction.guild.members, name=name.strip())
-            if member:
-                members.append(member)
-        if len(members) >= 2:
-            random.shuffle(members)
-            teams = [members[i:i + 2] for i in range(0, len(members), 2)]
-            if len(members) % 2 == 1:
-                teams[-1].append('Solo player: ' + teams[-1].pop())
-            embed = discord.Embed(
-                title="Teams for Arena",
-                description="\n".join([f"Team {i+1}: {', '.join([member.display_name for member in team])}" for i, team in enumerate(teams)]),
-                color=discord.Color.green()
-            )
-            await interaction.response.send_message(embed=embed)
-        else:
-            await interaction.response.send_message("Not enough members selected.", ephemeral=True)
-
         
 class AddChampionModal(Modal):
     def __init__(self, user_id, ctx):
@@ -140,7 +106,7 @@ class AddChampionModal(Modal):
             
             # Fetch the new embed and view with the updated win list
             embed, view = await get_wins_embed_and_view(interaction, interaction.user)
-            status_message = f"**{entered_champion}** has been successfully added to your win list."
+            status_message = f"✅**{entered_champion}** has been successfully added to your win list."
             await interaction.response.edit_message(content=status_message, embed=embed, view=view)
         else:
             await interaction.response.send_message(content=f"**{entered_champion}** is already in your win-list.", ephemeral=True)
@@ -162,9 +128,8 @@ class ShowWinsView(View):
 
     async def show_wins_callback(self, interaction: discord.Interaction):
         # Call list_wins with the original context and send the output
-        await list_wins(self.ctx)
-        # Acknowledge the interaction to confirm that the button click was processed
-        await interaction.response.defer()
+        embed, view = await get_wins_embed_and_view(interaction)
+        await interaction.response.send_message(embed=embed, view=view)
 
 
 class ChampionButtonView(View):
@@ -212,9 +177,7 @@ class ChampionButtonView(View):
 
     async def game_win(self, interaction: discord.Interaction):
         clicked_user = interaction.user
-        author = self.ctx.author
-
-        if clicked_user == author:
+        if clicked_user != self.teammate_name:
             winner_champion = self.champions[0]
         else:
             winner_champion = self.champions[1]
@@ -276,7 +239,7 @@ class RemoveChampionModal(Modal):
 
             # Check if a champion was actually removed
             if len(champion_wins[user_key]["wins"]) < original_count:
-                status_message = f"**{entered_champion_filtered}** has been removed from your win-list."
+                status_message = f"❌**{entered_champion_filtered}** has been removed from your win-list."
             else:
                 status_message = f"**{entered_champion_filtered}** is not in your win-list."
 
@@ -338,28 +301,6 @@ class SeeAllLeaderboardView(View):
         await list_leaderboard(self.ctx)
         # You can add an acknowledgment message or update the original message here if needed
         await interaction.response.defer()  # Optionally respond to the interaction without sending a message
-
-
-@client.event
-async def on_ready():
-    try:
-        synced = await tree.sync(guild=discord.Object(id=GUILD_ID))
-        print(f"Synced {len(synced)} commands.")
-    except Exception as e:
-        print(f"Failed to sync commands: {e}")
-    
-
-@client.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("I don't have permission to do that. Please check my role permissions.")
-    elif isinstance(error, commands.CommandNotFound):
-        pass
-    elif isinstance(error, commands.CommandInvokeError):
-        print(error)
-        await ctx.send("An error occurred while executing the command. Make sure I have the necessary permissions.")
-    else:
-        await ctx.send(f"An unexpected error occurred: {error}")
 
 
 # Helper function to save the wins data
@@ -424,8 +365,6 @@ async def send_leaderboard_image(ctx):
     file = discord.File(file_path, filename="leaderboard.png")
     view = SeeAllLeaderboardView(ctx)  # Initialize the view with the current context
     await ctx.send(file=file, view=view)
-
-
 
 @tree.command(
     name="leaderboard",
@@ -594,7 +533,7 @@ async def generate_champions(interaction, reroll_count=0, max_rerolls=2, teammat
     else:
         await interaction.response.edit_message(embed=embed, view=view)
 
-def is_git_repo_up_to_date():
+def github_status():
     try:
         # Fetch the latest changes from the remote
         subprocess.run(["git", "fetch"], check=True)
@@ -689,6 +628,29 @@ def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     return file_path
 
 
-is_git_repo_up_to_date()
+
+@client.event
+async def on_ready():
+    try:
+        synced = await tree.sync(guild=discord.Object(id=GUILD_ID))
+        print(f"Synced {len(synced)} commands.")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
+    
+
+@client.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("I don't have permission to do that. Please check my role permissions.")
+    elif isinstance(error, commands.CommandNotFound):
+        pass
+    elif isinstance(error, commands.CommandInvokeError):
+        print(error)
+        await ctx.send("An error occurred while executing the command. Make sure I have the necessary permissions.")
+    else:
+        await ctx.send(f"An unexpected error occurred: {error}")
+
+
+github_status()
 client.run(BOT_TOKEN)
 
