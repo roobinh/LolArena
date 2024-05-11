@@ -640,26 +640,23 @@ async def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     return file_path
 
 
-@tree.command(name='sync', description='Owner only')
+@tree.command(
+    name="sync",
+    description="Owner only",
+)
 async def sync(interaction: discord.Interaction):
     if str(interaction.user.id) == env.get("OWNER_ID"):
-        await tree.sync()
-        await interaction.response.send_message('✅ Command tree synced', ephemeral=True)
+        if GUILD_ID:
+            # Register commands to a specific guild for debugging
+            guild = discord.Object(id=int(GUILD_ID))
+            tree.copy_global_to(guild=guild)
+            synced = await tree.sync(guild=guild)
+        else:
+            # Register commands globally for production
+            synced = await tree.sync()
+        await interaction.response.send_message(f'✅ {len(synced)} commands synced', ephemeral=True)
     else:
         await interaction.response.send_message('You must be the owner to use this command!', ephemeral=True)
-
-
-@client.event
-async def on_ready():
-    if GUILD_ID:
-        # Register commands to a specific guild for debugging
-        guild = discord.Object(id=int(GUILD_ID))
-        tree.copy_global_to(guild=guild)
-        synced = await tree.sync(guild=guild)
-    else:
-        # Register commands globally for production
-        synced = await tree.sync()
-    print(f"{len(synced)} commands have been registered {'globally' if GUILD_ID is None else 'to guild ' + GUILD_ID}")
 
     
 @client.event
