@@ -483,10 +483,14 @@ async def generate_teams(interaction: discord.Interaction, select_members: str =
             await interaction.response.send_message("You need to be in a voice channel to use this command!", ephemeral=True)
 
 
-async def generate_champions(interaction, reroll_count=0, max_rerolls=2, teammate_name=None, is_next_game=False):
+async def generate_champions(interaction: discord.Interaction, reroll_count=0, max_rerolls=2, teammate_name=None, is_next_game=False):
     author = interaction.user.name 
     user_id = interaction.user.id  
     teammate_name = None if teammate_name == "Teammate" else teammate_name
+    if teammate_name == author:
+        await interaction.response.send_message("You can not team up with yourself.", ephemeral=True)
+        return
+
     champion_wins = load_champion_wins()
     user_wins = [win["champion"] for win in champion_wins.get(str(user_id), {}).get("wins", [])]
     available_for_user = [champion for champion in LOL_CHAMPIONS if champion not in user_wins]
