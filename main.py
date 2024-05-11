@@ -27,12 +27,10 @@ def load_champion_wins():
 LOL_CHAMPIONS = load_champion_list()
 WINS_FILE = "champion_wins.json"
 
-
 # Get tokens
 env = dotenv_values('.env')
 BOT_TOKEN = env.get('BOT_TOKEN_DEV') or env.get('BOT_TOKEN')
 GUILD_ID = env.get("GUILD_ID", None)
-print(f"GUILD_ID = {GUILD_ID}")
 
 # Bot Variables
 intents = discord.Intents.all()
@@ -41,11 +39,13 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
+
 class TeamMemberSelectionView(discord.ui.View):
     def __init__(self, members):
         super().__init__()
         # Create the select menu and add it to the view
         self.add_item(TeamMemberSelectMenu(members))
+
 
 class TeamMemberSelectMenu(discord.ui.Select):
     def __init__(self, members):
@@ -71,7 +71,8 @@ class TeamMemberSelectMenu(discord.ui.Select):
             color=discord.Color.green()
         )
         await interaction.response.edit_message(content="", embed=embed, view=None)
-        
+
+
 class AddChampionModal(Modal):
     def __init__(self, user_id, ctx):
         super().__init__(title="Add a Champion to Your Win List")
@@ -328,7 +329,6 @@ async def get_wins_embed_and_view(interaction, target_user=None):
 @tree.command(
     name="wins",
     description="Shows your wins",
-    guild=discord.Object(id=GUILD_ID)
 )
 @app_commands.describe(member="Show wins of specific user")
 async def list_wins(interaction: discord.Interaction, member: discord.Member = None):
@@ -347,7 +347,6 @@ def split_leaderboard(leaderboard, length=3):
 @tree.command(
     name="leaderboard_image",
     description="Shows leaderboard image (WORK IN PROGRESS)",
-    guild=discord.Object(id=GUILD_ID)
 )
 async def send_leaderboard_image(interaction: discord.Interaction):
     # Acknowledge the interaction and inform the user that the image is being generated.
@@ -394,7 +393,6 @@ async def create_leaderboard(interaction: discord.Interaction):
 @tree.command(
     name="leaderboard",
     description="Show leaderboard of server",
-    guild=discord.Object(id=GUILD_ID)
 )
 async def list_leaderboard(interaction: discord.Interaction):
     embed, view = await create_leaderboard(interaction)
@@ -403,7 +401,6 @@ async def list_leaderboard(interaction: discord.Interaction):
 @tree.command(
     name="help",
     description="Show available commands",
-    guild=discord.Object(id=GUILD_ID)
 )
 async def list_commands(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -432,7 +429,6 @@ async def list_commands(interaction: discord.Interaction):
 @tree.command(
     name="champions",
     description="Generate 2 random champions NEW",
-    guild=discord.Object(id=GUILD_ID)
 )
 @app_commands.describe(teammate="Type the name of your teammate to generate a team of 2 champions")
 async def champions(interaction: discord.Interaction, teammate: discord.Member = None):
@@ -445,7 +441,6 @@ async def champions(interaction: discord.Interaction, teammate: discord.Member =
 @tree.command(
     name="teams",
     description="Generate teams from selected server members or voice channel",
-    guild=discord.Object(id=GUILD_ID)
 )
 @app_commands.describe(select_members="Set to yes to select members manually.")
 @app_commands.choices(select_members=[
@@ -629,15 +624,20 @@ async def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     background.save(file_path)
     return file_path
 
+
 @client.event
 async def on_ready():
-    try:
-        synced = await tree.sync(guild=discord.Object(id=GUILD_ID))
-        print(f"Synced {len(synced)} commands.")
-    except Exception as e:
-        print(f"Failed to sync commands: {e}")
-    
+    if GUILD_ID:
+        # Register commands to a specific guild for debugging
+        guild = discord.Object(id=int(GUILD_ID))
+        tree.copy_global_to(guild=guild)
+        synced = await tree.sync(guild=guild)
+    else:
+        # Register commands globally for production
+        synced = await tree.sync()
+    print(f"{len(synced)} commands have been registered {'globally' if GUILD_ID is None else 'to guild ' + GUILD_ID}")
 
+    
 @client.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
