@@ -28,58 +28,48 @@ player_numbers = {}
 wins_file = "champion_wins.json"
 
 class AddChampionModal(Modal):
-    def __init__(self, user_id):
+    def __init__(self, user_id, ctx):
         super().__init__(title="Add a Champion to Your Win List")
         self.user_id = user_id
+        self.ctx = ctx
         self.champion_input = TextInput(label="Champion Name", placeholder="e.g., Ahri, Zed")
         self.add_item(self.champion_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Retrieve the entered champion name
         entered_champion = self.champion_input.value.strip()
         entered_champion = next((champion for champion in lol_champions if champion.lower() == entered_champion.lower()), entered_champion)
-        print(f'entered_champion = {entered_champion}')
 
-        # Validate the entered champion against the predefined list
         if entered_champion not in lol_champions:
-            await interaction.response.send_message(
-                f"Champion **{entered_champion}** not found in the available champion list.",
-                ephemeral=True
-            )
+            await interaction.response.send_message(f"Champion **{entered_champion}** not found in the available champion list.", ephemeral=True)
             return
 
-        # Load existing wins data
         champion_wins = load_champion_wins()
-
-        # Update or create the entry for the user, ensuring the 'wins' key always exists
         user_key = str(self.user_id)
         if user_key not in champion_wins:
             champion_wins[user_key] = {"name": interaction.user.name, "wins": []}
         elif "wins" not in champion_wins[user_key]:
             champion_wins[user_key]["wins"] = []
 
-        # Check if the champion is already in the user's wins
         existing_champions = [win["champion"] for win in champion_wins[user_key]["wins"]]
         if entered_champion not in existing_champions:
-            # Add the new win only if it doesn't already exist
             champion_wins[user_key]["wins"].append({
                 "champion": entered_champion,
                 "timestamp": datetime.now().strftime("%d-%m-%Y %H:%M")
             })
             save_champion_wins(champion_wins)
-            status_message = f"**{entered_champion}** successfully added to your win-list."
+            
+            # Fetch the new embed and view with the updated win list
+            embed, view = await list_wins(self.ctx, interaction.user, as_embed=True)
+            status_message = f"**{entered_champion}** has been successfully added to your win list."
+            await interaction.response.edit_message(content=status_message, embed=embed, view=view)
         else:
-            status_message = f"**{entered_champion}** is already in your win-list."
+            await interaction.response.send_message(content=f"**{entered_champion}** is already in your win-list.", ephemeral=True)
 
-        # Respond with a confirmation message
-        await interaction.response.send_message(
-            status_message,
-            ephemeral=True
-        )
+
 
 class ArenaHelpView(View):
     def __init__(self, ctx):
-        super().__init__()
+        super().__init__(timeout=None)
         self.ctx = ctx
 
         # Create buttons for different commands
@@ -118,7 +108,7 @@ class ArenaHelpView(View):
 
 class ShowWinsView(View):
     def __init__(self, user_id, ctx):
-        super().__init__()
+        super().__init__(timeout=None)
         self.user_id = user_id
         self.ctx = ctx
 
@@ -139,7 +129,7 @@ class ShowWinsView(View):
 
 class ChampionButtonView(View):
     def __init__(self, ctx, champions, reroll_count=0, max_rerolls=2, teammate_name=None):
-        super().__init__()
+        super().__init__(timeout=None)
         self.ctx = ctx
         self.champions = champions
         self.reroll_count = reroll_count
@@ -220,46 +210,48 @@ class ChampionButtonView(View):
         )
 
 class RemoveChampionModal(Modal):
-    def __init__(self, user_id):
+    def __init__(self, user_id, ctx):
         super().__init__(title="Remove a Champion from Your Win List")
         self.user_id = user_id
+        self.ctx = ctx
         self.champion_input = TextInput(label="Champion Name", placeholder="e.g., Ahri, Zed")
         self.add_item(self.champion_input)
 
+
     async def on_submit(self, interaction: discord.Interaction):
-        # Retrieve the entered champion name
-        entered_champion = self.champion_input.value.strip()
-        entered_champion = next((champion for champion in lol_champions if champion.lower() == entered_champion.lower()), entered_champion)
-        
+        entered_champion = self.champion_input.value.strip()  # Capitalize for consistent formatting
+        entered_champion_filtered = next((champion for champion in lol_champions if champion.lower() == entered_champion.lower()), None)
+
         # Load existing wins data
         champion_wins = load_champion_wins()
 
         # Remove the entered champion from the user's list
         user_key = str(self.user_id)
-        if user_key in champion_wins and "wins" in champion_wins[user_key]:
+        if entered_champion_filtered and user_key in champion_wins and "wins" in champion_wins[user_key]:
             original_count = len(champion_wins[user_key]["wins"])
             champion_wins[user_key]["wins"] = [
-                win for win in champion_wins[user_key]["wins"] if win["champion"] != entered_champion
+                win for win in champion_wins[user_key]["wins"] if win["champion"].lower() != entered_champion_filtered.lower()
             ]
             save_champion_wins(champion_wins)
 
             # Check if a champion was actually removed
-            if entered_champion.lower() not in [champ.lower() for champ in lol_champions]:
-                status_message = f"**{entered_champion}** is not a champion."
-            elif len(champion_wins[user_key]["wins"]) < original_count:
-                status_message = f"**{entered_champion}** has been removed from your win-list."
+            if len(champion_wins[user_key]["wins"]) < original_count:
+                status_message = f"**{entered_champion_filtered}** has been removed from your win-list."
             else:
-                status_message = f"**{entered_champion}** is not in your win-list."
-        else:
-            status_message = f"**{entered_champion}** is not in your win-list."
+                status_message = f"**{entered_champion_filtered}** is not in your win-list."
 
-        # Respond with a confirmation message
-        await interaction.response.send_message(status_message, ephemeral=True)
+            embed, view = await list_wins(self.ctx, interaction.user, as_embed=True)
+            await interaction.response.edit_message(content=status_message, embed=embed, view=view)
+        else:
+            status_message = f"**{entered_champion}** is not a valid champion."
+            await interaction.response.send_message(content=status_message, ephemeral=True)
+
 
 class AddChampionView(View):
-    def __init__(self, user_id):
-        super().__init__()
+    def __init__(self, user_id, ctx):
+        super().__init__(timeout=None)
         self.user_id = user_id
+        self.ctx = ctx  # Storing ctx for later use in callbacks
         self.add_button = Button(label="Add", style=discord.ButtonStyle.success)
         self.add_button.callback = self.add_champion_callback
         self.add_item(self.add_button)
@@ -270,13 +262,15 @@ class AddChampionView(View):
             await interaction.response.send_message("You can only edit your own win list. Use `/arena wins` to see your own win list.", ephemeral=True)
             return
 
-        # Show the modal to add a champion
-        await interaction.response.send_modal(AddChampionModal(self.user_id))
+        # Show the modal to add a champion, passing ctx to the modal
+        await interaction.response.send_modal(AddChampionModal(self.user_id, self.ctx))
+
 
 class RemoveChampionView(View):
-    def __init__(self, user_id):
-        super().__init__()
+    def __init__(self, user_id, ctx):
+        super().__init__(timeout=None)
         self.user_id = user_id
+        self.ctx = ctx  # Store ctx for later use
         self.remove_button = Button(label="Remove", style=discord.ButtonStyle.danger)
         self.remove_button.callback = self.remove_champion_callback
         self.add_item(self.remove_button)
@@ -284,11 +278,11 @@ class RemoveChampionView(View):
     async def remove_champion_callback(self, interaction: discord.Interaction):
         # Ensure only the intended user can interact
         if str(interaction.user.id) != str(self.user_id):
-            await interaction.response.send_message("You can only edit your own win list. Use `/arena wins` to see your own win list.", ephemeral=True)
+            await interaction.response.send_message("You can only edit your own win list.", ephemeral=True)
             return
+        # Pass the stored ctx to RemoveChampionModal
+        await interaction.response.send_modal(RemoveChampionModal(self.user_id, self.ctx))
 
-        # Show the modal to remove a champion
-        await interaction.response.send_modal(RemoveChampionModal(self.user_id))
 
 @bot.event
 async def on_ready():
@@ -315,7 +309,7 @@ async def arena(ctx, mode: str = "", username: str = ""):
     mode = mode.lower()
     if mode == "help":
         await list_commands(ctx)
-    if mode == "leaderboard":
+    elif mode == "leaderboard":
         await list_leaderboard(ctx)
     elif mode in ["champions", "champion", "c"]:
         if username:
@@ -358,40 +352,25 @@ def save_champion_wins(data):
     with open(wins_file, "w") as file:
         json.dump(data, file, indent=4)
 
-async def list_wins(ctx, target_user=None):
-    if target_user:
-        user_key = str(target_user.id)
-        user_name = target_user.name
-    else:
-        user_key = str(ctx.author.id)
-        user_name = ctx.author.name
+async def list_wins(ctx, target_user=None, as_embed=False):
+    user_key = str(target_user.id) if target_user else str(ctx.author.id)
+    user_name = target_user.name if target_user else ctx.author.name
 
-    # Load the current wins data
     champion_wins = load_champion_wins()
-    total_wins = 0
+    wins = champion_wins.get(user_key, {}).get("wins", [])
 
-    if user_key in champion_wins and "wins" in champion_wins[user_key]:
-        wins = champion_wins[user_key]["wins"]
-        total_wins = len(wins)
-        if wins:
-            wins_str = "\n".join([f"• **{win['champion']}** (_{win['timestamp']}_)" for win in wins])
-        else:
-            wins_str = "The win list is currently empty 🥲"
-    else:
-        wins_str = "The win list is currently empty 🥲"
+    description = "\n".join([f"• **{win['champion']}** (_{win['timestamp']}_)" for win in wins]) if wins else "No wins recorded."
+    embed = discord.Embed(title=f"{user_name}'s Win List", description=description, color=discord.Color.green())
 
-    embed = discord.Embed(
-        title=f"{user_name}'s Win List ({total_wins}) 👑",
-        description=wins_str,
-        color=discord.Color.green()
-    )
-
-    # Add Remove and Add Champion buttons
     view = View()
-    view.add_item(RemoveChampionView(user_key).children[0])  # Get the Remove button
-    view.add_item(AddChampionView(user_key).children[0])  # Get the Add button
+    view.add_item(RemoveChampionView(user_key, ctx).children[0])  # Remove button
+    view.add_item(AddChampionView(user_key, ctx).children[0])  # Add button
 
-    await ctx.send(embed=embed, view=view)
+    if as_embed:
+        return embed, view
+    else:
+        await ctx.send(embed=embed, view=view)
+
 
 async def list_leaderboard(ctx):
     wins_file = load_champion_wins()
@@ -465,13 +444,13 @@ async def list_players(ctx):
             embed.add_field(name=f"{player_numbers[member.id]}", value=member.name, inline=False)
         await ctx.send(embed=embed)
     else:
+        print("hallo")
         await ctx.send("You need to be in a voice channel to use this command!")
 
 async def generate_teams(ctx, arg=None):
     if ctx.author.voice and ctx.author.voice.channel:
         voice_channel = ctx.author.voice.channel
         members = [member for member in voice_channel.members if not member.bot]
-        member_names = [member.name for member in members]
 
         if arg and arg.isdigit():
             selected_players = [member for member in members if player_numbers.get(member.id) in map(int, arg)]
@@ -497,6 +476,7 @@ async def generate_teams(ctx, arg=None):
             )
             await ctx.send(embed=embed)
     else:
+        print("hallo2")
         await ctx.send("You need to be in a voice channel to use this command!")
 
 async def generate_champions(ctx, interaction=None, reroll_count=0, max_rerolls=2, teammate_name=None):

@@ -2,3 +2,5 @@
 .env
 champion_wins.json
 test.py
+generate_image.py
+/leaderboards
