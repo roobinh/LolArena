@@ -286,11 +286,11 @@ class RemoveChampionView(View):
         # Pass the stored ctx to RemoveChampionModal
         await interaction.response.send_modal(RemoveChampionModal(self.user_id, self.ctx))
 
-class ShowMoreView(View):
+class SeeAllLeaderboardView(View):
     def __init__(self, ctx):
         super().__init__()
-        # Define the 'Show More' button
-        self.show_more_button = Button(label="Show More", style=discord.ButtonStyle.primary)
+        # Define the 'See All' button
+        self.show_more_button = Button(label="See All", style=discord.ButtonStyle.primary)
         self.show_more_button.callback = self.show_more_callback
         self.ctx = ctx  # Store the context to use in callback
         self.add_item(self.show_more_button)
@@ -417,7 +417,7 @@ async def send_leaderboard_image(ctx):
 
     # Send the image to the Discord channel
     file = discord.File(file_path, filename="leaderboard.png")
-    view = ShowMoreView(ctx)  # Initialize the view with the current context
+    view = SeeAllLeaderboardView(ctx)  # Initialize the view with the current context
     await ctx.send(file=file, view=view)
 
 
