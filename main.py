@@ -1,9 +1,12 @@
-import os, json, random, discord, subprocess
+import os, json, random, discord, subprocess, requests
 from dotenv import dotenv_values
 from discord.ext import commands
 from discord.ui import Button, View, Modal, TextInput
 from discord.ext.commands import MissingPermissions
 from datetime import datetime
+import matplotlib.pyplot as plt
+from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
 
 def load_champion_list(file_path="lol_champions.json"):
     with open(file_path, "r") as file:
@@ -283,6 +286,21 @@ class RemoveChampionView(View):
         # Pass the stored ctx to RemoveChampionModal
         await interaction.response.send_modal(RemoveChampionModal(self.user_id, self.ctx))
 
+class ShowMoreView(View):
+    def __init__(self, ctx):
+        super().__init__()
+        # Define the 'Show More' button
+        self.show_more_button = Button(label="Show More", style=discord.ButtonStyle.primary)
+        self.show_more_button.callback = self.show_more_callback
+        self.ctx = ctx  # Store the context to use in callback
+        self.add_item(self.show_more_button)
+
+    async def show_more_callback(self, interaction: discord.Interaction):
+        # Call list_leaderboard when the button is clicked
+        await list_leaderboard(self.ctx)
+        # You can add an acknowledgment message or update the original message here if needed
+        await interaction.response.defer()  # Optionally respond to the interaction without sending a message
+
 
 @bot.event
 async def on_ready():
@@ -310,7 +328,7 @@ async def arena(ctx, mode: str = "", username: str = ""):
     if mode == "help":
         await list_commands(ctx)
     elif mode == "leaderboard":
-        await list_leaderboard(ctx)
+        await send_leaderboard_image(ctx)
     elif mode in ["champions", "champion", "c"]:
         if username:
             target_user = discord.utils.get(ctx.guild.members, name=username)
@@ -370,6 +388,37 @@ async def list_wins(ctx, target_user=None, as_embed=False):
         return embed, view
     else:
         await ctx.send(embed=embed, view=view)
+
+def split_leaderboard(leaderboard, length=3):
+    limited_items = {}
+    for key, value in leaderboard.items():
+        limited_items[key] = value
+        if len(limited_items) == length:
+            break
+    return limited_items
+
+async def send_leaderboard_image(ctx):
+    wins_data = load_champion_wins()
+    leaderboard = {}
+
+    for id, info in wins_data.items():
+        user = discord.utils.get(ctx.guild.members, name=info['name'])
+        if user:
+            leaderboard[id] = len(info['wins'])
+
+    leaderboard = dict(sorted(leaderboard.items(), key=lambda item: item[1], reverse=True))
+    leaderboard = split_leaderboard(leaderboard)
+    
+    # Fetch avatars and usernames
+    avatar_info = [fetch_discord_avatar_and_username(user_id, bot_token) for user_id in leaderboard.keys()]
+
+    # Generate the leaderboard image
+    file_path = generate_leaderboard_with_avatars(leaderboard, avatar_info)
+
+    # Send the image to the Discord channel
+    file = discord.File(file_path, filename="leaderboard.png")
+    view = ShowMoreView(ctx)  # Initialize the view with the current context
+    await ctx.send(file=file, view=view)
 
 
 async def list_leaderboard(ctx):
@@ -562,6 +611,73 @@ def is_git_repo_up_to_date():
         print("Verifying Git Status: Error while checking repository status:", e)
     except Exception as e:
         print("Verifying Git Status: An unexpected error occurred, probably because git is not installed.", e)
+
+def fetch_discord_avatar_and_username(user_id, bot_token):
+    """Fetches the Discord avatar and username for a given user ID using the specified bot token."""
+    url = f"https://discord.com/api/v9/users/{user_id}"
+    headers = {"Authorization": f"Bot {bot_token}"}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        data = response.json()
+        avatar_hash = data.get('avatar')
+        username = data.get('username', 'Unknown User')
+        if avatar_hash:
+            avatar_url = f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.png?size=1024"
+            return avatar_url, username
+        return "path_to_default_avatar.png", username
+    else:
+        print(f"Failed to fetch data for user {user_id}: {response.status_code} - {response.text}")
+        return "path_to_default_avatar.png", 'Unknown User'
+
+from PIL import Image, ImageDraw, ImageFont
+
+from PIL import Image, ImageDraw, ImageFont
+
+def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
+    """Generates and saves a leaderboard image with avatars, usernames, and scores."""
+    if not os.path.exists('leaderboards'):
+        os.makedirs('leaderboards')
+
+    background = Image.open('assets/leaderboard_bg1.png').convert('RGBA')
+    fonts = {
+        0: ImageFont.truetype("assets/Heavitas.ttf", 28),  # Larger font for 1st place
+        1: ImageFont.truetype("assets/Heavitas.ttf", 18),  # Smaller font for 2nd place
+        2: ImageFont.truetype("assets/Heavitas.ttf", 18)   # Smaller font for 3rd place
+    }
+
+    # Define placement coordinates and sizes for each position based on the number of entries
+    num_entries = len(leaderboard_data)
+    if num_entries == 1:
+        placements = {0: (371, 238, 119, 119)}  # Only first place
+        text_offsets = {0: (371, 370)}
+    elif num_entries == 2:
+        placements = {0: (239, 238, 119, 119), 1: (547, 238, 119, 119)}  # First and second places swapped
+        text_offsets = {0: (239, 370), 1: (547, 370)}
+    else:
+        placements = {0: (547, 238, 77, 77), 1: (371, 238, 119, 119), 2: (239, 238, 77, 77)}
+        text_offsets = {0: (547, 325), 1: (371, 370), 2: (239, 325)}
+
+    draw = ImageDraw.Draw(background)
+    for index, ((user_id, score), (avatar_url, username)) in enumerate(zip(sorted(leaderboard_data.items(), key=lambda item: item[1], reverse=True)[:3], avatar_info)):
+        if avatar_url.startswith('http'):
+            response = requests.get(avatar_url)
+            avatar_image = Image.open(BytesIO(response.content))
+        else:
+            avatar_image = Image.open(avatar_url)  # Open from local path if URL is not valid
+
+        avatar_image = avatar_image.convert('RGBA')
+        x, y, width, height = placements[index]
+        avatar_image = avatar_image.resize((width, height))
+        mask = avatar_image.split()[3] if 'A' in avatar_image.getbands() else None
+        background.paste(avatar_image, (x, y), mask)
+
+        text_x, text_y = text_offsets[index]
+        draw.text((text_x, text_y), f"{score} Wins", font=fonts[index], fill='#553EF9')
+
+    file_path = 'leaderboards/leaderboard_with_avatars.png'
+    background.save(file_path)
+    return file_path
+
 
 is_git_repo_up_to_date()
 bot.run(bot_token)
