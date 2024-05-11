@@ -637,13 +637,16 @@ async def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     background.save(file_path)
     return file_path
 
+
 @tree.command(name='sync', description='Owner only')
 async def sync(interaction: discord.Interaction):
-    if interaction.user.id == env.get("OWNER_ID"):
+    print(interaction.user.id)
+    print(env.get("OWNER_ID"))
+    if str(interaction.user.id) == env.get("OWNER_ID"):
         await tree.sync()
-        print('Command tree synced.')
+        await interaction.response.send_message('✅ Command tree synced', ephemeral=True)
     else:
-        await interaction.response.send_message('You must be the owner to use this command!')
+        await interaction.response.send_message('You must be the owner to use this command!', ephemeral=True)
 
 
 @client.event
