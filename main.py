@@ -41,10 +41,24 @@ tree = app_commands.CommandTree(client)
 
 
 class TeamMemberSelectionView(discord.ui.View):
-    def __init__(self, members):
+    def __init__(self, members, page=0):
         super().__init__()
-        # Create the select menu and add it to the view
-        self.add_item(TeamMemberSelectMenu(members))
+        # Pagination parameters
+        items_per_page = 25
+        start = page * items_per_page
+        end = start + items_per_page
+        paginated_members = members[start:end]
+
+        # Add paginated select menu to the view
+        self.add_item(TeamMemberSelectMenu(paginated_members))
+        
+        # Add buttons to navigate pages if necessary
+        if len(members) > items_per_page:
+            if start > 0:
+                self.add_item(discord.ui.Button(label="<<", style=discord.ButtonStyle.primary, row=1, custom_id="prev_page"))
+            if end < len(members):
+                self.add_item(discord.ui.Button(label=">>", style=discord.ButtonStyle.primary, row=1, custom_id="next_page"))
+
 
 
 class TeamMemberSelectMenu(discord.ui.Select):
@@ -623,9 +637,7 @@ async def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
     ]
 
     draw = ImageDraw.Draw(background)
-    print(f"leaderboard_data = {leaderboard_data}")
     sorted_leaderboard = sorted(leaderboard_data.items(), key=lambda item: item[1], reverse=True)[:3]
-    print(f"sorted_leaderboard = {sorted_leaderboard}")
     
     for index, ((user_id, score), (avatar_url, username)) in enumerate(zip(sorted_leaderboard, avatar_info)):
         avatar_image = Image.open(BytesIO(requests.get(avatar_url).content) if avatar_url.startswith('http') else avatar_url)
@@ -641,8 +653,6 @@ async def generate_leaderboard_with_avatars(leaderboard_data, avatar_info):
 
 @tree.command(name='sync', description='Owner only')
 async def sync(interaction: discord.Interaction):
-    print(interaction.user.id)
-    print(env.get("OWNER_ID"))
     if str(interaction.user.id) == env.get("OWNER_ID"):
         await tree.sync()
         await interaction.response.send_message('✅ Command tree synced', ephemeral=True)
