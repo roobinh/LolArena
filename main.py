@@ -50,7 +50,7 @@ class TeamMemberSelectionView(discord.ui.View):
 class TeamMemberSelectMenu(discord.ui.Select):
     def __init__(self, members):
         options = [
-            discord.SelectOption(label=member.name, value=str(member.id)) for member in members  # Using `member.name` instead of `member.display_name`
+            discord.SelectOption(label=member.name, value=str(member.id)) for member in members 
         ]
         super().__init__(
             placeholder="Select members for the team...",
@@ -314,7 +314,7 @@ def save_champion_wins(data):
 async def get_wins_embed_and_view(interaction, target_user=None):
     # If no target user is specified, use the user who initiated the interaction
     user_key = str(target_user.id) if target_user else str(interaction.user.id)
-    user_name = target_user.display_name if target_user else interaction.user.display_name
+    user_name = target_user.name if target_user else interaction.user.name
 
     champion_wins = load_champion_wins()
     wins = champion_wins.get(user_key, {}).get("wins", [])
@@ -434,7 +434,7 @@ async def list_commands(interaction: discord.Interaction):
 @app_commands.describe(teammate="Type the name of your teammate to generate a team of 2 champions")
 async def champions(interaction: discord.Interaction, teammate: discord.Member = None):
     if teammate:
-        await generate_champions(interaction, 0, 2, teammate.display_name)
+        await generate_champions(interaction, 0, 2, teammate.name)
     else:
         await generate_champions(interaction)
 
@@ -469,14 +469,14 @@ async def generate_teams(interaction: discord.Interaction, select_members: str =
                 if len(members) % 2 == 1:
                     solo_player = teams[-1].pop()
                     teams[-1].append(solo_player)  # Keep as member
-                    solo_player_display = 'Solo player: ' + solo_player.display_name
+                    solo_player_display = 'Solo player: ' + solo_player.name
 
                 description_lines = []
                 for i, team in enumerate(teams):
                     if solo_player_display and i == len(teams) - 1:  # Check if this is the last team with a solo player
-                        description_lines.append(f"Team {i+1}: {', '.join(member.display_name for member in team[:-1])}, {solo_player_display}")
+                        description_lines.append(f"Team {i+1}: {', '.join(member.name for member in team[:-1])}, {solo_player_display}")
                     else:
-                        description_lines.append(f"Team {i+1}: {', '.join(member.display_name for member in team)}")
+                        description_lines.append(f"Team {i+1}: {', '.join(member.name for member in team)}")
                 
                 description = "\n".join(description_lines)
                 embed = discord.Embed(
