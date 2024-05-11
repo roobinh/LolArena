@@ -61,10 +61,13 @@ class TeamMemberSelectMenu(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         selected_members = [discord.utils.get(interaction.guild.members, id=int(member_id)) for member_id in self.values]
+        selected_members = [member for member in selected_members if member is not None]  # Filter out None values
+
         random.shuffle(selected_members)
         teams = [selected_members[i:i + 2] for i in range(0, len(selected_members), 2)]
-        if len(selected_members) % 2 == 1:
-            teams[-1].append(teams[-1].pop().name)  # Using `name` instead of `display_name`
+        if len(selected_members) % 2 == 1 and len(teams[-1]) == 2:
+            teams[-1].append(teams[-1].pop().name)  # Move the last member as a name to the team
+
         embed = discord.Embed(
             title="Teams for Arena",
             description="\n".join([f"Team {i+1}: {', '.join([member.name for member in team])}" for i, team in enumerate(teams)]),
@@ -453,11 +456,14 @@ async def generate_teams(interaction: discord.Interaction, select_members: str =
         voice_state = interaction.user.voice
         if voice_state and voice_state.channel:
             members = [member for member in voice_state.channel.members if not member.bot]
-            if members:
-                view = TeamMemberSelectionView(members)
-                await interaction.response.send_message("Select members for your teams:", view=view)
+            if len(members) >= 2:
+                if members:
+                    view = TeamMemberSelectionView(members)
+                    await interaction.response.send_message("Select members for your teams:", view=view)
+                else:
+                    await interaction.response.send_message("No members available for selection.", ephemeral=True)
             else:
-                await interaction.response.send_message("No members available for selection.", ephemeral=True)
+                await interaction.response.send_message("You must be with at least 2 players in the voice channel", ephemeral=True)
         else:
             await interaction.response.send_message("You need to be in a voice channel to use this command!", ephemeral=True)
     else:
