@@ -53,7 +53,7 @@ class TeamMemberSelectMenu(discord.ui.Select):
             discord.SelectOption(label=member.name, value=str(member.id)) for member in members 
         ]
         super().__init__(
-            placeholder="Select members for the team...",
+            placeholder="Select members...",
             min_values=2,  # Minimum number of selections
             max_values=len(options),  # Maximum number of selections
             options=options
@@ -460,7 +460,7 @@ async def generate_teams(interaction: discord.Interaction, select_members: str =
             if len(members) >= 2:
                 if members:
                     view = TeamMemberSelectionView(members)
-                    await interaction.response.send_message("Select members for your teams:", view=view)
+                    await interaction.response.send_message("Select members that play game:", view=view)
                 else:
                     await interaction.response.send_message("No members available for selection.", ephemeral=True)
             else:
@@ -479,7 +479,7 @@ async def generate_teams(interaction: discord.Interaction, select_members: str =
                 if len(members) % 2 == 1:
                     solo_player = teams[-1].pop()
                     teams[-1].append(solo_player)  # Keep as member
-                    solo_player_display = 'Solo player: ' + solo_player.name
+                    solo_player_display = solo_player.name
 
                 description_lines = []
                 for i, team in enumerate(teams):
