@@ -182,7 +182,7 @@ class ChampionButtonView(View):
 
     async def game_win(self, interaction: discord.Interaction):
         clicked_user = interaction.user
-        if clicked_user != self.teammate_name:
+        if clicked_user.name != self.teammate_name:
             winner_champion = self.champions[0]
         else:
             winner_champion = self.champions[1]
