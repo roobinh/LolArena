@@ -8,9 +8,6 @@ region = 'europe'
 lol_watcher = LolWatcher(api_key)
 arena_god_challenge_id = 602002
 
-# Set rate limit timout
-rate_limit_timeout = 3 # ... per 120 seconds
-
 # Define the Riot Account information
 riot_id = 'tehruubin'
 tagline = 'euw'
@@ -38,7 +35,7 @@ def make_request(url, headers):
             if not rate_limited:
                 print(f'Rate limit response ({response.status_code}). Awaiting ')
                 rate_limited = True
-            time.sleep(rate_limit_timeout)
+            time.sleep(10)
             return make_request(url, headers)
         else:
             print(f"Error: {response.status_code} - {response.json()}")
@@ -99,9 +96,6 @@ def get_match_details(api_key, match_id):
 # Fetch the PUUID
 puuid = get_puuid(api_key, riot_id, tagline)
 if puuid:
-    print(f"PUUID: {puuid}")
-
-    # Fetch champion wins history
     champions_wins = get_champion_wins(api_key, puuid)
     print(f"Champions wins for challenge Arena God:")
     for champ in champions_wins:
