@@ -1,4 +1,5 @@
 import os, json, random, discord, subprocess, requests
+import time
 from typing import List
 from dotenv import dotenv_values
 from discord import app_commands
@@ -7,6 +8,7 @@ from discord.ui import Button, View, Modal, TextInput
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
+from summoner_wins import CustomRiotAPI
 
 def load_champion_list(file_path="lol_champions.json"):
     with open(file_path, "r") as file:
@@ -31,6 +33,7 @@ WINS_FILE = "champion_wins.json"
 env = dotenv_values('.env')
 BOT_TOKEN = env.get('BOT_TOKEN_DEV') or env.get('BOT_TOKEN')
 GUILD_ID = env.get("GUILD_ID", None)
+RIOT_API_TOKEN = env.get("RIOT_API_TOKEN", None)
 
 # Bot Variables
 intents = discord.Intents.all()
@@ -38,7 +41,7 @@ intents.voice_states = True
 intents.message_content = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
-
+riot_api = CustomRiotAPI(RIOT_API_TOKEN)
 
 class TeamMemberSelectionView(discord.ui.View):
     def __init__(self, members):
@@ -74,7 +77,6 @@ class TeamMemberSelectMenu(discord.ui.Select):
             color=discord.Color.green()
         )
         await interaction.response.edit_message(content="", embed=embed, view=None)
-
 
 
 class AddChampionModal(Modal):
@@ -290,6 +292,108 @@ class RemoveChampionView(View):
             return
         # Pass the stored ctx to RemoveChampionModal
         await interaction.response.send_modal(RemoveChampionModal(self.user_id, self.ctx))
+    
+
+class UpdateChampionModal(Modal):
+    def __init__(self, user_id, ctx):
+        super().__init__(title="Sync wins with Riot")
+        self.user_id = user_id
+        self.ctx = ctx
+        self.summoner_input = TextInput(label="Summoner Name#Tagline", placeholder="e.g., thebausffs#euw")
+        self.add_item(self.summoner_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        input_text = self.summoner_input.value.strip()
+        summoner_name, _, tagline = input_text.partition('#')
+
+        if not summoner_name or not tagline:
+            await interaction.response.send_message("Please enter a valid format: summoner_name#tagline", ephemeral=True)
+            return
+        # Fetch and print champion wins
+        puuid = await riot_api.get_puuid(summoner_name, tagline)
+        if puuid:
+            champion_wins = load_champion_wins()
+            user_key = str(self.user_id)
+
+            # Update summoner name and tagline
+            if user_key not in champion_wins:
+                champion_wins[user_key] = {"name": interaction.user.name, "summoner_name": summoner_name, "summoner_tagline": tagline, "wins": []}
+            else:
+                champion_wins[user_key]["summoner_name"] = summoner_name
+                champion_wins[user_key]["summoner_tagline"] = tagline
+
+            save_champion_wins(champion_wins)
+
+            # Notify user that updating might take some time
+            await interaction.response.send_message(f"Updating champion wins with name **{summoner_name}#{tagline}**, this may take a while since it's the first time. (approx. 5 minutes ⌛)")
+            champions_wins = await riot_api.get_champion_wins(puuid)
+            await riot_api.close_session()
+
+            # Update champion wins file
+            champion_wins[user_key]['latest_update'] = int(time.time())*1000
+            wins = []
+            for champion, date in champions_wins.items():
+                wins.append({
+                    "champion": champion,
+                    "timestamp": date
+                })
+            champion_wins[user_key]['wins'] = wins
+            save_champion_wins(champion_wins)
+            embed, view = await get_wins_embed_and_view(interaction)
+            status_message = "Win list synced with Riot Games ✅"
+            await interaction.edit_original_response(content=status_message, embed=embed, view=view)
+        else:
+            await interaction.response.send_message(f"Summoner with name **{summoner_name}** and tagline **{tagline}** doesn't exist", ephemeral=True)
+            return
+
+
+class UpdateChampionView(View):
+    def __init__(self, user_id, ctx, title):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.ctx = ctx
+        self.update_button = Button(label=title, style=discord.ButtonStyle.primary)
+        self.update_button.callback = self.update_champion_callback
+        self.add_item(self.update_button)
+
+    async def update_champion_callback(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != str(self.user_id):
+            await interaction.response.send_message("You can only modify your own win list.", ephemeral=True)
+            return
+
+        champion_wins = load_champion_wins()
+        user_key = str(self.user_id)
+        summoner_name = champion_wins.get(user_key, {}).get("summoner_name", None)
+        tagline = champion_wins.get(user_key, {}).get("summoner_tagline", None)
+
+        if summoner_name and tagline:
+            embed, view = await get_wins_embed_and_view(interaction, interaction.user)
+            status_message = f"Your wins for **{summoner_name}#{tagline}** are being updated, please wait... ⌛"
+            await interaction.response.edit_message(content=status_message, embed=embed, view=view)
+            puuid = await riot_api.get_puuid(summoner_name, tagline)
+            if puuid:
+                latest_update = champion_wins.get(user_key, {}).get("latest_update", None)
+                champions_wins = await riot_api.get_champion_wins(puuid, latest_update)
+                await riot_api.close_session()
+                
+                # Update champion wins file
+                champion_wins[user_key]['latest_update'] = int(time.time())*1000
+                current_wins: list = champion_wins[user_key]['wins']
+                for champion, date in champions_wins.items():
+                    if champion not in [champion['champion'] for champion in current_wins]:
+                        current_wins.append({
+                            "champion": champion,
+                            "timestamp": date
+                        })
+                champion_wins[user_key]['wins'] = current_wins
+                save_champion_wins(champion_wins)
+
+                # send new list to user message
+                status_message = "Champion list updated ✅"
+                embed, view = await get_wins_embed_and_view(interaction, interaction.user)
+                await interaction.edit_original_response(content=status_message, embed=embed, view=view)
+        else:
+            await interaction.response.send_modal(UpdateChampionModal(self.user_id, self.ctx))
 
 
 class SeeAllLeaderboardView(View):
@@ -314,19 +418,34 @@ def save_champion_wins(data):
     with open(WINS_FILE, "w") as file:
         json.dump(data, file, indent=4)
 
+def epoch_to_str(epoch):
+    epoch_time = epoch / 1000  # Convert milliseconds to seconds
+    datetime_obj = datetime.fromtimestamp(epoch_time)
+    return datetime_obj.strftime('%d/%m/%Y %H:%M')
+
 async def get_wins_embed_and_view(interaction, target_user=None):
     # If no target user is specified, use the user who initiated the interaction
     user_key = str(target_user.id) if target_user else str(interaction.user.id)
     user_name = target_user.name if target_user else interaction.user.name
 
     champion_wins = load_champion_wins()
-    wins = champion_wins.get(user_key, {}).get("wins", [])
-    description = "\n".join([f"• **{win['champion']}** (_{win['timestamp']}_)" for win in wins]) + f"\n\n_{len(wins)} out of {len(LOL_CHAMPIONS)} champions_" if wins else "No wins recorded."
-    embed = discord.Embed(title=f"{user_name}'s Win List 👑", description=description, color=discord.Color.green())
+    summoner_name = champion_wins.get(user_key, {}).get("summoner_name", None)
+    summoner_tagline = champion_wins.get(user_key, {}).get("summoner_tagline", None)
+
+    wins = sorted(champion_wins.get(user_key, {}).get("wins", []), key=lambda x: x['timestamp'])
+    description = "\n".join([f"• **{win['champion']}** (_{epoch_to_str(win['timestamp'])}_)" for win in wins]) + \
+          f"\n\n_{len(wins)} out of {len(LOL_CHAMPIONS)} champions_" if wins else "No wins recorded."
+    title_username = f"{summoner_name}#{summoner_tagline}" if summoner_name and summoner_tagline else user_name
+    embed = discord.Embed(title=f"{title_username}'s Win List 👑", description=description, color=discord.Color.green())
 
     view = View()
-    view.add_item(RemoveChampionView(user_key, interaction).children[0])
-    view.add_item(AddChampionView(user_key, interaction).children[0])
+    latest_update = champion_wins.get(user_key, {}).get("latest_update", None)
+    if not latest_update:
+        view.add_item(RemoveChampionView(user_key, interaction).children[0])
+        view.add_item(AddChampionView(user_key, interaction).children[0])
+        view.add_item(UpdateChampionView(user_key, interaction, "Sync with Riot 🔁").children[0])
+    else:
+        view.add_item(UpdateChampionView(user_key, interaction, "Update 🔁").children[0])
 
     return embed, view
 
@@ -336,7 +455,6 @@ async def get_wins_embed_and_view(interaction, target_user=None):
 )
 @app_commands.describe(member="Show wins of specific user")
 async def list_wins(interaction: discord.Interaction, member: discord.Member = None):
-    interaction.response.defer()
     embed, view = await get_wins_embed_and_view(interaction, member)
     await interaction.response.send_message(embed=embed, view=view)
 

@@ -1,104 +1,84 @@
-import time
-import requests
+import aiohttp
+import asyncio
 from riotwatcher import LolWatcher, ApiError
 
-# Replace with your own API key
-api_key = 'RGAPI-70b5e4f5-9c38-41f9-ab56-8a386a0c25d2'
-region = 'europe'
-lol_watcher = LolWatcher(api_key)
-arena_god_challenge_id = 602002
+class CustomRiotAPI:
+    def __init__(self, api_key, region='europe'):
+        self.api_key = api_key
+        self.region = region
+        self.lol_watcher = LolWatcher(api_key)
+        self.arena_god_challenge_id = 602002
+        self.rate_limited = False
+        self.session = aiohttp.ClientSession()  # Initialize the session
 
-# Define the Riot Account information
-riot_id = 'tehruubin'
-tagline = 'euw'
-rate_limited = False
+    async def make_request(self, url, headers):
+        async with aiohttp.ClientSession() as session:
+            while True:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        if self.rate_limited:
+                            # print("No longer rate limited")
+                            self.rate_limited = False
+                        return await response.json()
+                    elif response.status == 403:
+                        # print('Forbidden: Check your API key and permissions.')
+                        return None
+                    elif response.status == 404:
+                        # print('Resource not found.')
+                        return None
+                    elif response.status == 429:
+                        if not self.rate_limited:
+                            # print(f"Rate limit response ({response.status}). Awaiting")
+                            self.rate_limited = True
+                        await asyncio.sleep(10)
+                        continue
+                    else:
+                        response_data = await response.json()
+                        print(f"Error: {response.status} - {response_data}")
+                        return None
 
-# Function to make API requests with rate limiting and retry on 429
-def make_request(url, headers):
-    global rate_limited
+    async def get_puuid(self, riot_id, tagline):
+        url = f'https://{self.region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{riot_id}/{tagline}'
+        headers = {'X-Riot-Token': self.api_key}
+        account_response = await self.make_request(url, headers)
+        return account_response.get('puuid') if account_response else None
 
-    while True:
-        response = requests.get(url, headers=headers)
-        
-        if response.status_code == 200:
-            if rate_limited:
-                print("No longer rate limited")
-                rate_limited = False
-            return response.json()
-        elif response.status_code == 403:
-            print('Forbidden: Check your API key and permissions.')
-            return None
-        elif response.status_code == 404:
-            print('Resource not found.')
-            return None
-        elif response.status_code == 429:
-            if not rate_limited:
-                print(f'Rate limit response ({response.status_code}). Awaiting ')
-                rate_limited = True
-            time.sleep(10)
-            return make_request(url, headers)
-        else:
-            print(f"Error: {response.status_code} - {response.json()}")
-            return None
+    async def get_champion_wins(self, puuid, latest_update=None):
+        champions_won = {}
+        start = 0
+        count = 10  # count per request
+        arena_start_date = latest_update or 1714521600000 # 1 May 2024, Release date Arena (God Title)
+        current_last_game = arena_start_date + 1
 
-# Function to get PUUID using Riot ID and tagline
-def get_puuid(api_key, riot_id, tagline):
-    url = f'https://{region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{riot_id}/{tagline}'
-    headers = {
-        'X-Riot-Token': api_key
-    }
-    return make_request(url, headers).get('puuid')
+        while current_last_game > arena_start_date:
+            match_url = f'https://{self.region}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start={start}&count={count}'
+            headers = {'X-Riot-Token': self.api_key}
+            match_ids = await self.make_request(match_url, headers)
+            if not match_ids:
+                break
 
-def get_champion_wins(api_key, puuid):
-    champions_won = set()
-    start = 0
-    count = 10  # count per request
-    arena_start_date = 1714521600000
-    current_last_game = arena_start_date + 1
+            for match_id in match_ids:
+                match_details = await self.get_match_details(match_id)
+                if match_details:
+                    if match_details.get('info').get('gameMode') == "CHERRY":
+                        participants = match_details['info']['participants']
+                        for participant in participants:
+                            if participant['puuid'] == puuid and participant['placement'] == 1:
+                                champion_name = participant['championName']
+                                game_creation = match_details.get('info').get('gameCreation')
+                                # Update the dictionary only if the champion's win date is later than the stored one
+                                if champion_name not in champions_won or game_creation > champions_won[champion_name]:
+                                    champions_won[champion_name] = game_creation
+                    current_last_game = match_details.get('info').get('gameCreation')
 
-    while current_last_game > arena_start_date:
-        print(f"{current_last_game} > {arena_start_date}")
-        match_url = f'https://{region}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start={start}&count={count}'
-        print(f'fetching match details: start={start}, count={count}')
-        headers = {
-            'X-Riot-Token': api_key
-        }
+            start += count
+        return champions_won
 
-        match_ids = make_request(match_url, headers)
-        if not match_ids:
-            break
 
-        for match_id in match_ids:
-            match_details = get_match_details(api_key, match_id)
-            if match_details:
-                if match_details.get('info').get('gameMode') == "CHERRY":
-                    participants = match_details['info']['participants']
-                    for participant in participants:
-                        if participant['puuid'] == puuid:
-                            if participant['placement'] == 1:
-                                champions_won.add(participant['championName'])
-            current_last_game = match_details.get('info').get('gameCreation')
-            print(f"match_id={match_id}, game timestamp = {current_last_game}")
-                                
-        start += count
+    async def get_match_details(self, match_id):
+        match_url = f'https://{self.region}.api.riotgames.com/lol/match/v5/matches/{match_id}'
+        headers = {'X-Riot-Token': self.api_key}
+        return await self.make_request(match_url, headers)
 
-    print(f"Total matches: {len(match_ids)}")
-    return champions_won
-
-# Function to get match details
-def get_match_details(api_key, match_id):
-    match_url = f'https://{region}.api.riotgames.com/lol/match/v5/matches/{match_id}'
-    headers = {
-        'X-Riot-Token': api_key
-    }
-    return make_request(match_url, headers)
-
-# Fetch the PUUID
-puuid = get_puuid(api_key, riot_id, tagline)
-if puuid:
-    champions_wins = get_champion_wins(api_key, puuid)
-    print(f"Champions wins for challenge Arena God:")
-    for champ in champions_wins:
-        print(champ)
-else:
-    print("Summoner with name and tagline does't exist")
+    async def close_session(self):
+        await self.session.close()  # Remember to close the session when done
