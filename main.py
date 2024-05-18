@@ -389,7 +389,7 @@ class UpdateChampionView(View):
                 save_champion_wins(champion_wins)
 
                 # send new list to user message
-                status_message = "Champion list updated ✅"
+                status_message = "Win list updated ✅"
                 embed, view = await get_wins_embed_and_view(interaction, interaction.user)
                 await interaction.edit_original_response(content=status_message, embed=embed, view=view)
         else:
@@ -419,9 +419,12 @@ def save_champion_wins(data):
         json.dump(data, file, indent=4)
 
 def epoch_to_str(epoch):
-    epoch_time = epoch / 1000  # Convert milliseconds to seconds
-    datetime_obj = datetime.fromtimestamp(epoch_time)
-    return datetime_obj.strftime('%d/%m/%Y %H:%M')
+    try:
+        epoch_time = epoch / 1000  # Convert milliseconds to seconds
+        datetime_obj = datetime.fromtimestamp(epoch_time)
+        return datetime_obj.strftime('%d/%m/%Y %H:%M')
+    except:
+        return epoch
 
 async def get_wins_embed_and_view(interaction, target_user=None):
     # If no target user is specified, use the user who initiated the interaction
