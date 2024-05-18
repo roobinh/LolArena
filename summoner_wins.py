@@ -11,7 +11,7 @@ class CustomRiotAPI:
         self.rate_limited = False
         self.session = aiohttp.ClientSession()  # Initialize the session
 
-    async def make_request(self, url, headers):
+    async def make_request(self, url, headers, retry=0):
         async with aiohttp.ClientSession() as session:
             while True:
                 async with session.get(url, headers=headers) as response:
@@ -31,12 +31,20 @@ class CustomRiotAPI:
                             # print(f"Rate limit response ({response.status}). Awaiting")
                             self.rate_limited = True
                         await asyncio.sleep(10)
-                        continue
+                        return self.make_request(url, headers)
                     else:
                         response_data = await response.json()
                         print(f"Error: {response.status} - {response_data}")
-                        return None
+                        if retry > 3:
+                            return None
+                        return self.make_request(url, headers, retry+1)
 
+    async def is_api_token_valid(self, riot_id, tagline):
+        url = f'https://{self.region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{riot_id}/{tagline}'
+        headers = {'X-Riot-Token': self.api_key}
+        response = await self.make_request(url, headers)
+        return True if response is not None else False
+    
     async def get_puuid(self, riot_id, tagline):
         url = f'https://{self.region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{riot_id}/{tagline}'
         headers = {'X-Riot-Token': self.api_key}

@@ -309,7 +309,12 @@ class UpdateChampionModal(Modal):
         if not summoner_name or not tagline:
             await interaction.response.send_message("Please enter a valid format: summoner_name#tagline", ephemeral=True)
             return
+        
         # Fetch and print champion wins
+        if not riot_api.is_api_token_valid(summoner_name, tagline):
+            await interaction.response.send_message("API Token expired.", ephemeral=True)
+            return
+        
         puuid = await riot_api.get_puuid(summoner_name, tagline)
         if puuid:
             champion_wins = load_champion_wins()
@@ -370,6 +375,9 @@ class UpdateChampionView(View):
             embed, view = await get_wins_embed_and_view(interaction, interaction.user)
             status_message = f"Your wins for **{summoner_name}#{tagline}** are being updated, please wait... ⌛"
             await interaction.response.edit_message(content=status_message, embed=embed, view=view)
+            if not riot_api.is_api_token_valid(summoner_name, tagline):
+                await interaction.response.send_message("API Token expired.", ephemeral=True)
+                return
             puuid = await riot_api.get_puuid(summoner_name, tagline)
             if puuid:
                 latest_update = champion_wins.get(user_key, {}).get("latest_update", None)
@@ -413,6 +421,60 @@ class SeeAllLeaderboardView(View):
         await interaction.response.defer()  # Optionally respond to the interaction without sending a message
 
 
+class ChangeSummonerNameButton(Button):
+    def __init__(self, user_id, ctx):
+        super().__init__(label="Change Summoner Name", style=discord.ButtonStyle.gray)
+        self.user_id = user_id
+        self.ctx = ctx
+
+    async def callback(self, interaction: discord.Interaction):
+        modal = ChangeSummonerNameModal(self.user_id, self.ctx)
+        await interaction.response.send_modal(modal)
+
+class ChangeSummonerNameModal(Modal):
+    def __init__(self, user_id, ctx):
+        super().__init__(title="Change Your Summoner Name")
+        self.user_id = user_id
+        self.ctx = ctx
+        self.summoner_name_input = TextInput(label="New Summoner Name#Tagline", placeholder="e.g., thebausffs#euw")
+        self.add_item(self.summoner_name_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        input_text = self.summoner_name_input.value.strip()
+        summoner_name, _, tagline = input_text.partition('#')
+        champion_wins = load_champion_wins()
+        user_key = str(self.user_id)
+        if user_key in champion_wins:
+            if not riot_api.is_api_token_valid(summoner_name, tagline):
+                await interaction.response.send_message("API Token expired.", ephemeral=True)
+                return
+            puuid = await riot_api.get_puuid(summoner_name, tagline)
+            if puuid:
+                champion_wins[user_key]['summoner_name'] = summoner_name
+                champion_wins[user_key]['summoner_tagline'] = tagline
+        
+                await interaction.response.send_message(f"Updating champion wins with new name **{summoner_name}#{tagline}**, this may take a while since it's the first time. (approx. 5 minutes ⌛)")
+                champions_wins = await riot_api.get_champion_wins(puuid)
+                await riot_api.close_session()
+
+                # Update champion wins file
+                champion_wins[user_key]['latest_update'] = int(time.time())*1000
+                wins = []
+                for champion, date in champions_wins.items():
+                    wins.append({
+                        "champion": champion,
+                        "timestamp": date
+                    })
+                champion_wins[user_key]['wins'] = wins
+                save_champion_wins(champion_wins)
+                embed, view = await get_wins_embed_and_view(interaction)
+                status_message = "Win list synced with Riot Games ✅"
+                await interaction.edit_original_response(content=status_message, embed=embed, view=view)
+            else:
+                await interaction.response.send_message(f"Summoner with name **{summoner_name}** and tagline **{tagline}** doesn't exist", ephemeral=True)
+                return
+
+
 # Helper function to save the wins data
 def save_champion_wins(data):
     with open(WINS_FILE, "w") as file:
@@ -449,6 +511,7 @@ async def get_wins_embed_and_view(interaction, target_user=None):
         view.add_item(UpdateChampionView(user_key, interaction, "Sync with Riot 🔁").children[0])
     else:
         view.add_item(UpdateChampionView(user_key, interaction, "Update 🔁").children[0])
+        view.add_item(ChangeSummonerNameButton(user_key, interaction))
 
     return embed, view
 
