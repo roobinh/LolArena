@@ -310,8 +310,10 @@ class UpdateChampionModal(Modal):
             await interaction.response.send_message("Please enter a valid format: summoner_name#tagline", ephemeral=True)
             return
         
-        # Fetch and print champion wins
-        if not await riot_api.is_api_token_valid(summoner_name, tagline):
+        # Check if token is valid
+        api_token_valid = await riot_api.is_api_token_valid(summoner_name, tagline)
+        await riot_api.close_session()
+        if not api_token_valid:
             await interaction.response.send_message("API Token expired.", ephemeral=True)
             return
         
@@ -375,7 +377,10 @@ class UpdateChampionView(View):
             embed, view = await get_wins_embed_and_view(interaction, interaction.user)
             status_message = f"Your wins for **{summoner_name}#{tagline}** are being updated, please wait... ⌛"
             await interaction.response.edit_message(content=status_message, embed=embed, view=view)
-            if not await riot_api.is_api_token_valid(summoner_name, tagline):
+            # Check if token is valid
+            api_token_valid = await riot_api.is_api_token_valid(summoner_name, tagline)
+            await riot_api.close_session()
+            if not api_token_valid:
                 await interaction.response.send_message("API Token expired.", ephemeral=True)
                 return
             puuid = await riot_api.get_puuid(summoner_name, tagline)
@@ -445,9 +450,14 @@ class ChangeSummonerNameModal(Modal):
         champion_wins = load_champion_wins()
         user_key = str(self.user_id)
         if user_key in champion_wins:
-            if not await riot_api.is_api_token_valid(summoner_name, tagline):
+
+            # Check if token is valid
+            api_token_valid = await riot_api.is_api_token_valid(summoner_name, tagline)
+            await riot_api.close_session()
+            if not api_token_valid:
                 await interaction.response.send_message("API Token expired.", ephemeral=True)
                 return
+            
             puuid = await riot_api.get_puuid(summoner_name, tagline)
             if puuid:
                 champion_wins[user_key]['summoner_name'] = summoner_name
