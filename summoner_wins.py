@@ -31,13 +31,13 @@ class CustomRiotAPI:
                             # print(f"Rate limit response ({response.status}). Awaiting")
                             self.rate_limited = True
                         await asyncio.sleep(10)
-                        return self.make_request(url, headers)
+                        return await self.make_request(url, headers)
                     else:
                         response_data = await response.json()
                         print(f"Error: {response.status} - {response_data}")
                         if retry > 3:
                             return None
-                        return self.make_request(url, headers, retry+1)
+                        return await self.make_request(url, headers, retry+1)
 
     async def is_api_token_valid(self, riot_id, tagline):
         url = f'https://{self.region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{riot_id}/{tagline}'
@@ -66,7 +66,7 @@ class CustomRiotAPI:
                 break
 
             for match_id in match_ids:
-                match_details = await self.get_match_details(match_id)
+                match_details = await self.get_match_details(match_id)  # Await the coroutine
                 if match_details:
                     if match_details.get('info').get('gameMode') == "CHERRY":
                         participants = match_details['info']['participants']

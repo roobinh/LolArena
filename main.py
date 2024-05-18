@@ -433,6 +433,10 @@ class ChangeSummonerNameButton(Button):
         self.ctx = ctx
 
     async def callback(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != str(self.user_id):
+            await interaction.response.send_message("You can only edit your own win list. Use `/wins` to see your own win list.", ephemeral=True)
+            return
+        
         modal = ChangeSummonerNameModal(self.user_id, self.ctx)
         await interaction.response.send_modal(modal)
 
