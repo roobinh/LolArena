@@ -311,11 +311,11 @@ class UpdateChampionModal(Modal):
             return
         
         # Check if token is valid
-        api_token_valid = await riot_api.is_api_token_valid(summoner_name, tagline)
-        await riot_api.close_session()
-        if not api_token_valid:
-            await interaction.response.send_message("API Token expired.", ephemeral=True)
-            return
+        # api_token_valid = await riot_api.is_api_token_valid(summoner_name, tagline)
+        # await riot_api.close_session()
+        # if not api_token_valid:
+        #     await interaction.response.send_message("API Token expired.", ephemeral=True)
+        #     return
         
         puuid = await riot_api.get_puuid(summoner_name, tagline)
         if puuid:
@@ -378,11 +378,11 @@ class UpdateChampionView(View):
             status_message = f"Your wins for **{summoner_name}#{tagline}** are being updated, please wait... ⌛"
             await interaction.response.edit_message(content=status_message, embed=embed, view=view)
             # Check if token is valid
-            api_token_valid = await riot_api.is_api_token_valid(summoner_name, tagline)
-            await riot_api.close_session()
-            if not api_token_valid:
-                await interaction.response.send_message("API Token expired.", ephemeral=True)
-                return
+            # api_token_valid = await riot_api.is_api_token_valid(summoner_name, tagline)
+            # await riot_api.close_session()
+            # if not api_token_valid:
+            #     await interaction.response.send_message("API Token expired.", ephemeral=True)
+            #     return
             puuid = await riot_api.get_puuid(summoner_name, tagline)
             if puuid:
                 latest_update = champion_wins.get(user_key, {}).get("latest_update", None)
@@ -456,11 +456,11 @@ class ChangeSummonerNameModal(Modal):
         if user_key in champion_wins:
 
             # Check if token is valid
-            api_token_valid = await riot_api.is_api_token_valid(summoner_name, tagline)
-            await riot_api.close_session()
-            if not api_token_valid:
-                await interaction.response.send_message("API Token expired.", ephemeral=True)
-                return
+            # api_token_valid = await riot_api.is_api_token_valid(summoner_name, tagline)
+            # await riot_api.close_session()
+            # if not api_token_valid:
+            #     await interaction.response.send_message("API Token expired.", ephemeral=True)
+            #     return
             
             puuid = await riot_api.get_puuid(summoner_name, tagline)
             if puuid:
