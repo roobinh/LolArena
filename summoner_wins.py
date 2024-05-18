@@ -10,6 +10,7 @@ class CustomRiotAPI:
         self.arena_god_challenge_id = 602002
         self.rate_limited = False
         self.session = aiohttp.ClientSession()  # Initialize the session
+        
 
     async def make_request(self, url, headers, retry=0):
         async with aiohttp.ClientSession() as session:
@@ -51,7 +52,7 @@ class CustomRiotAPI:
         account_response = await self.make_request(url, headers)
         return account_response.get('puuid') if account_response else None
 
-    async def get_champion_wins(self, puuid, latest_update=None):
+    async def get_champion_wins(self, puuid, lol_champions, latest_update=None):
         champions_won = {}
         start = 0
         count = 10  # count per request
@@ -73,6 +74,7 @@ class CustomRiotAPI:
                         for participant in participants:
                             if participant['puuid'] == puuid and participant['placement'] == 1:
                                 champion_name = participant['championName']
+                                champion_name = next((champion for champion in lol_champions if champion.lower().replace("'", '') == champion_name.lower().replace("'", '')), champion_name)
                                 game_creation = match_details.get('info').get('gameCreation')
                                 # Update the dictionary only if the champion's win date is later than the stored one
                                 if champion_name not in champions_won or game_creation > champions_won[champion_name]:

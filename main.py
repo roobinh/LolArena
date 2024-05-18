@@ -329,11 +329,9 @@ class UpdateChampionModal(Modal):
                 champion_wins[user_key]["summoner_name"] = summoner_name
                 champion_wins[user_key]["summoner_tagline"] = tagline
 
-            save_champion_wins(champion_wins)
-
             # Notify user that updating might take some time
             await interaction.response.send_message(f"Updating champion wins with name **{summoner_name}#{tagline}**, this may take a while since it's the first time. (approx. 5 minutes ⌛)")
-            champions_wins = await riot_api.get_champion_wins(puuid)
+            champions_wins = await riot_api.get_champion_wins(puuid, LOL_CHAMPIONS)
             await riot_api.close_session()
 
             # Update champion wins file
@@ -365,7 +363,7 @@ class UpdateChampionView(View):
 
     async def update_champion_callback(self, interaction: discord.Interaction):
         if str(interaction.user.id) != str(self.user_id):
-            await interaction.response.send_message("You can only modify your own win list.", ephemeral=True)
+            await interaction.response.send_message("You can only modify your own win list. Use `/wins` to see your own win list.", ephemeral=True)
             return
 
         champion_wins = load_champion_wins()
@@ -386,7 +384,7 @@ class UpdateChampionView(View):
             puuid = await riot_api.get_puuid(summoner_name, tagline)
             if puuid:
                 latest_update = champion_wins.get(user_key, {}).get("latest_update", None)
-                champions_wins = await riot_api.get_champion_wins(puuid, latest_update)
+                champions_wins = await riot_api.get_champion_wins(puuid, LOL_CHAMPIONS, latest_update)
                 await riot_api.close_session()
                 
                 # Update champion wins file
@@ -468,7 +466,7 @@ class ChangeSummonerNameModal(Modal):
                 champion_wins[user_key]['summoner_tagline'] = tagline
         
                 await interaction.response.send_message(f"Updating champion wins with new name **{summoner_name}#{tagline}**, this may take a while since it's the first time. (approx. 5 minutes ⌛)")
-                champions_wins = await riot_api.get_champion_wins(puuid)
+                champions_wins = await riot_api.get_champion_wins(puuid, LOL_CHAMPIONS)
                 await riot_api.close_session()
 
                 # Update champion wins file
