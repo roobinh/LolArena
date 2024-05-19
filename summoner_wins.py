@@ -53,6 +53,9 @@ class CustomRiotAPI:
         return account_response.get('puuid') if account_response else None
 
     async def get_champion_wins(self, puuid, lol_champions, latest_update=None):
+        def normalize_name(name):
+            return name.lower().replace("'", "").replace(" ", "")
+
         champions_won = {}
         start = 0
         count = 10  # count per request
@@ -73,8 +76,11 @@ class CustomRiotAPI:
                         participants = match_details['info']['participants']
                         for participant in participants:
                             if participant['puuid'] == puuid and participant['placement'] == 1:
-                                champion_name = participant['championName']
-                                champion_name = next((champion for champion in lol_champions if champion.lower().replace("'", '') == champion_name.lower().replace("'", '')), champion_name)
+                                normalized_champion_name = normalize_name(participant['championName'])
+                                champion_name = next(
+                                    (champion for champion in lol_champions if normalize_name(champion) == normalized_champion_name),
+                                    participant['championName']
+                                )
                                 game_creation = match_details.get('info').get('gameCreation')
                                 # Update the dictionary only if the champion's win date is later than the stored one
                                 if champion_name not in champions_won or game_creation > champions_won[champion_name]:
