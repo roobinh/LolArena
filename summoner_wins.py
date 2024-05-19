@@ -1,6 +1,25 @@
 import aiohttp
 import asyncio
+import os, json
+import time
 from riotwatcher import LolWatcher, ApiError
+
+# Helper function to load or initialize the wins data
+def load_arena_games():
+    if os.path.exists(GAMES_FILENAME):
+        try:
+            with open(GAMES_FILENAME, "r") as file:
+                return json.load(file)
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+# Helper function to save the wins data
+def save_arena_games(data):
+    with open(GAMES_FILENAME, "w") as file:
+        json.dump(data, file, indent=4)
+
+GAMES_FILENAME = "arena_games.json"
 
 class CustomRiotAPI:
     def __init__(self, api_key, region='europe'):
@@ -52,16 +71,29 @@ class CustomRiotAPI:
         account_response = await self.make_request(url, headers)
         return account_response.get('puuid') if account_response else None
 
-    async def get_champion_wins(self, puuid, lol_champions, latest_update=None):
+    async def update_arena_games(self, user_key, user_name, puuid, lol_champions, latest_update=None, summoner_name=None, tagline=None):
+        def get_teammate_info(match_details, team_id, puuuid_owner):
+            participants = match_details['info']['participants']
+            for participant in participants:
+                if participant['playerSubteamId'] == team_id and participant['puuid'] != puuuid_owner:
+                    teammate_name = participant['riotIdGameName']
+                    normalized_champion_name = normalize_name(participant['championName'])
+                    teammate_champion = next(
+                        (champion for champion in lol_champions if normalize_name(champion) == normalized_champion_name),
+                        participant['championName']
+                    )
+                    return teammate_name, teammate_champion
+            return "Unknown", "Unknown"
+
         def normalize_name(name):
             return name.lower().replace("'", "").replace(" ", "")
 
-        champions_won = {}
+        matches = []
         start = 0
         count = 10  # count per request
         arena_start_date = latest_update or 1714521600000 # 1 May 2024, Release date Arena (God Title)
         current_last_game = arena_start_date + 1
-
+        
         while current_last_game > arena_start_date:
             match_url = f'https://{self.region}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start={start}&count={count}'
             headers = {'X-Riot-Token': self.api_key}
@@ -70,31 +102,51 @@ class CustomRiotAPI:
                 break
 
             for match_id in match_ids:
-                match_details = await self.get_match_details(match_id)  # Await the coroutine
+                match_details = await self.get_match_details(match_id)
                 if match_details:
+                    game_creation = match_details['info'].get('gameCreation')
                     if match_details.get('info').get('gameMode') == "CHERRY":
                         participants = match_details['info']['participants']
                         for participant in participants:
-                            if participant['puuid'] == puuid and participant['placement'] == 1:
+                            if participant['puuid'] == puuid:
+                                placement = participant['placement']
+                                team_id = participant['playerSubteamId'] 
                                 normalized_champion_name = normalize_name(participant['championName'])
                                 champion_name = next(
                                     (champion for champion in lol_champions if normalize_name(champion) == normalized_champion_name),
                                     participant['championName']
                                 )
-                                game_creation = match_details.get('info').get('gameCreation')
-                                # Update the dictionary only if the champion's win date is later than the stored one
-                                if champion_name not in champions_won or game_creation > champions_won[champion_name]:
-                                    champions_won[champion_name] = game_creation
-                    current_last_game = match_details.get('info').get('gameCreation')
+                        teammate_name, teammate_champion = get_teammate_info(match_details, team_id, puuid)
+                        matches.append({
+                            match_id: {
+                                "champion": champion_name,
+                                "teammate_name": teammate_name,
+                                "teammate_champion": teammate_champion,
+                                "timestamp": game_creation,
+                                "place": placement
+                            }
+                        })                    
+                    current_last_game = game_creation
 
             start += count
-        return champions_won
+            
+        await self.session.close() # Close connections
+        arena_games = load_arena_games()
 
+        if user_key not in arena_games:
+            arena_games[user_key] = {"name": user_name, "summoner_name": summoner_name, "summoner_tagline": tagline, "arena_games": {}}
+        
+        if "arena_games" not in arena_games[user_key]:
+            arena_games[user_key]["arena_games"] = {}
 
+        for match in matches:
+            for match_id, match_details in match.items():
+                arena_games.get(user_key).get('arena_games')[match_id] = match_details
+        arena_games[user_key]['latest_update'] = int(time.time()) * 1000
+        save_arena_games(arena_games)
+        return
+    
     async def get_match_details(self, match_id):
         match_url = f'https://{self.region}.api.riotgames.com/lol/match/v5/matches/{match_id}'
         headers = {'X-Riot-Token': self.api_key}
         return await self.make_request(match_url, headers)
-
-    async def close_session(self):
-        await self.session.close()  # Remember to close the session when done

@@ -1,7 +1,9 @@
 
 .env
-champion_wins.json
+arena_games.json
 test.py
 generate_image.py
 /leaderboards
 /__pycache__
+example_game.json
+example_response.json
