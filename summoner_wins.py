@@ -71,6 +71,28 @@ class CustomRiotAPI:
         account_response = await self.make_request(url, headers)
         return account_response.get('puuid') if account_response else None
 
+    async def get_stats(self, participant):
+        return {
+            "total_damage": participant['totalDamageDealt'],
+            "total_kills": participant['kills'],
+            "total_deaths": participant['deaths'],
+            "total_assists": participant['assists'],
+            "totalHeal" : participant['totalHeal'],
+            "total_self_healing": participant['totalHeal'],
+            "total_shielding_on_teammate": participant['totalDamageShieldedOnTeammates'],
+            "physicalDamageTaken": participant['physicalDamageTaken'],
+            "cc_duration": participant['totalTimeCCDealt'],
+            "highest_crit": participant['largestCriticalStrike'],
+            "ability_1_used": participant['spell1Casts'],
+            "ability_2_used": participant['spell2Casts'],
+            "ability_3_used": participant['spell3Casts'],
+            "ability_4_used": participant['spell4Casts'],
+            "playerAugment1": participant['playerAugment1'],
+            "playerAugment2": participant['playerAugment2'],
+            "playerAugment3": participant['playerAugment3'],
+            "goldEarned": participant['goldEarned']
+        }
+        
     async def update_arena_games(self, user_key, user_name, puuid, lol_champions, latest_update=None, summoner_name=None, tagline=None):
         def get_teammate_info(match_details, team_id, puuuid_owner):
             participants = match_details['info']['participants']
@@ -106,11 +128,14 @@ class CustomRiotAPI:
                 if match_details:
                     game_creation = match_details['info'].get('gameCreation')
                     if match_details.get('info').get('gameMode') == "CHERRY":
+                        stats = {}
+                    
                         participants = match_details['info']['participants']
                         for participant in participants:
                             if participant['puuid'] == puuid:
                                 placement = participant['placement']
-                                team_id = participant['playerSubteamId'] 
+                                team_id = participant['playerSubteamId']
+                                stats = await self.get_stats(participant)
                                 normalized_champion_name = normalize_name(participant['championName'])
                                 champion_name = next(
                                     (champion for champion in lol_champions if normalize_name(champion) == normalized_champion_name),
@@ -123,7 +148,8 @@ class CustomRiotAPI:
                                 "teammate_name": teammate_name,
                                 "teammate_champion": teammate_champion,
                                 "timestamp": game_creation,
-                                "place": placement
+                                "place": placement,
+                                "stats": stats
                             }
                         })                    
                     current_last_game = game_creation

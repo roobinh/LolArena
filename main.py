@@ -1,5 +1,4 @@
 import os, json, random, discord, subprocess, requests
-import time
 from typing import List
 from dotenv import dotenv_values
 from discord import app_commands
@@ -473,6 +472,7 @@ async def get_wins_embed_and_view(interaction, target_user=None):
         f"• **{game_details['champion']}** - First win with {game_details['teammate_name']} as {game_details['teammate_champion']} on {epoch_to_str(game_details['timestamp'])}"
         for game_details in first_wins
     ]) if wins else f"No wins recorded. Click below to fetch all wins."
+
     title_username = f"{summoner_name}#{summoner_tagline}" if summoner_name and summoner_tagline else user_name
     embed = discord.Embed(title=f"{title_username}'s Win List 👑", description=description, color=discord.Color.green())
 
@@ -657,6 +657,159 @@ async def generate_teams(interaction: discord.Interaction, select_members: str =
         else:
             await interaction.response.send_message("You need to be in a voice channel to use this command!", ephemeral=True)
 
+async def get_user_arena_stats(user_id: str):
+    """Retrieve a list of arena win statistics for a given user."""
+
+    # Load all arena game wins from storage
+    arena_games = load_arena_games()
+
+    # Check if the user has any recorded wins
+    if user_id not in arena_games:
+        return []
+
+    # Extract the list of win statistics for the specified user
+    user_wins = arena_games[user_id]['arena_games']
+    if not user_wins:
+        return []
+    stats = [user_wins[game_id] for game_id in user_wins]
+
+    return stats
+
+async def arena_stats_to_description(user_id):
+    stats = await get_user_arena_stats(user_id)
+    if not stats:
+        return None
+    
+    def get_most_played_champions():
+        # Accumulate the count of each champion played
+        champion_count = {}
+        for game in stats:
+            champion = game['champion']
+            if champion in champion_count:
+                champion_count[champion] += 1
+            else:
+                champion_count[champion] = 1
+
+        # Sort the champions based on the count, highest first
+        champion_count_sorted = sorted(champion_count.items(), key=lambda item: item[1], reverse=True)
+        
+        # Get the first five most played champions
+        first_five_dict = dict(champion_count_sorted[:5])
+        
+        # Return as a formatted string
+        return '\n'.join(f"{champ}: {count} times" for champ, count in first_five_dict.items())
+
+    def get_average_place():
+        if not stats:
+            return 0  # Avoid division by zero
+        return sum(game['place'] for game in stats) / len(stats)
+
+    def get_total_kda():
+        kills, deaths, assists = 0, 0, 0
+        for game in stats:
+            kills += game['stats'].get('total_kills', 0)
+            deaths += game['stats'].get('total_deaths', 0)
+            assists += game['stats'].get('total_assists', 0)
+        return f"{kills}/{deaths}/{assists}"
+
+    def get_total_healing():
+        return sum(game['stats'].get('total_heal', 0) for game in stats)
+
+    def get_total_shielding():
+        return sum(game['stats'].get('total_shielding_on_teammate', 0) for game in stats)
+
+    def get_placement_stats():
+        if not stats:
+            return {"top_1_percent": 0, "top_4_percent": 0, "last_place_percent": 0}
+        placements = [game['place'] for game in stats]
+        total_games = len(placements)
+        top_1 = sum(1 for p in placements if p == 1)
+        top_4 = sum(1 for p in placements if p <= 4)
+        last_place = sum(1 for p in placements if p == len(stats))
+        return {
+            "top_1_percent": 100 * top_1 / total_games,
+            "top_4_percent": 100 * top_4 / total_games,
+            "last_place_percent": 100 * last_place / total_games
+        }
+
+    def get_most_stat(stat_key):
+        max_value = 0
+        max_champion = ""
+        for game in stats:
+            if 'stats' in game:
+                stat_value = game['stats'].get(stat_key, 0)
+                if stat_value > max_value:
+                    max_value = stat_value
+                    max_champion = game['champion']
+        if max_champion:  # Ensures that we found at least one valid game
+            return (max_value, max_champion)
+        else:
+            return (0, "No data")  # or any other default you'd prefer
+
+    # Building the description
+    placement_stats = get_placement_stats()
+    most_damage = get_most_stat('total_damage')
+    most_ability_usage = max((sum(game['stats'].get(stat, 0) for stat in ['ability_1_used', 'ability_2_used', 'ability_3_used', 'ability_4_used']), game['champion']) for game in stats)
+    most_cc_duration = get_most_stat('cc_duration')
+    most_gold = get_most_stat('gold_earned')
+    highest_crit = get_most_stat('highest_crit')
+
+    description_items = [
+        f"**Total games played**: {len(stats)}",
+        f"**Most played champions**: \n{get_most_played_champions()}",
+        "\n",
+        f"**Total K/D/A**: {get_total_kda()}",
+        f"**Total healing**: {get_total_healing()}",
+        f"**Total shielding**: {get_total_shielding()}",
+        f"**Total #1 (%)**: {placement_stats['top_1_percent']:.2f}%",
+        f"**Total top 4 (%)**: {placement_stats['top_4_percent']:.2f}%",
+        f"**Total last place (%)**: {placement_stats['last_place_percent']:.2f}%",
+        f"**Average placement**: {get_average_place():.2f}",
+        "\n",
+        f"**Most damage in one game**: {most_damage[1]} ({most_damage[0]})",
+        f"**Most ability usage in one game**: {most_ability_usage[1]} ({most_ability_usage[0]})",
+        f"**Most cc duration in one game**: {most_cc_duration[1]} ({most_cc_duration[0]})",
+        f"**Most gold earned in one game**: {most_gold[1]} ({most_gold[0]})",
+        f"**Highest crit (champ, amount)**: {highest_crit[1]} ({highest_crit[0]})"
+    ]
+    return "\n".join(description_items)
+
+
+async def get_stats_embed(user_id: str):
+    arena_games = load_arena_games()
+    summoner_name = arena_games.get(user_id, {}).get("summoner_name", None)
+    print(summoner_name)
+    description = await arena_stats_to_description(user_id)
+    if not description:
+        return None
+    
+    embed = discord.Embed(
+            title=f"Stats for {summoner_name}",
+            description=description,
+            color=discord.Color.green()
+        )
+    return embed
+
+@tree.command(
+    name="stats",
+    description="Show intersting stats!",
+)
+@app_commands.describe(summoner_name="Name of the summoner")
+async def haswon(interaction: discord.Interaction, summoner_name: discord.Member = None):
+    user_id = str(interaction.user.id)
+    if summoner_name:
+        target_user = discord.utils.get(interaction.guild.members, name=summoner_name.name)
+        if not target_user:
+            await interaction.response.send_message(f"User not found. Please try again.", ephemeral=True)
+            return
+        user_id = str(target_user.id)
+
+    embed = await get_stats_embed(user_id)
+    if not embed:
+        await interaction.response.send_message(f"No games found for this user.", ephemeral=True)
+        return
+    await interaction.response.send_message(embed=embed)
+
 async def hasWon(interaction: discord.Interaction, entered_champion: str):
     def normalize_name(name):
         return name.lower().replace("'", "").replace(" ", "")
@@ -670,7 +823,6 @@ async def hasWon(interaction: discord.Interaction, entered_champion: str):
         return None, None
     return champion_name in unique_user_wins, champion_name
    
-# TODO: Create this function
 @tree.command(
     name="haswon",
     description="See if you have already won on a champion",
