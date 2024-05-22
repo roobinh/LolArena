@@ -73,14 +73,16 @@ class CustomRiotAPI:
 
     async def get_stats(self, participant):
         return {
-            "total_damage": participant['totalDamageDealt'],
+            "total_damage": participant['totalDamageDealtToChampions'],
             "total_kills": participant['kills'],
             "total_deaths": participant['deaths'],
             "total_assists": participant['assists'],
-            "totalHeal" : participant['totalHeal'],
+            "total_heal" : participant['totalHeal'],
             "total_self_healing": participant['totalHeal'],
+            "total__healing_on_allies": participant['totalHealsOnTeammates'],
+            "total_shielding": participant['totalHealsOnTeammates'],
             "total_shielding_on_teammate": participant['totalDamageShieldedOnTeammates'],
-            "physicalDamageTaken": participant['physicalDamageTaken'],
+            "physical_damage_taken": participant['physicalDamageTaken'],
             "cc_duration": participant['totalTimeCCDealt'],
             "highest_crit": participant['largestCriticalStrike'],
             "ability_1_used": participant['spell1Casts'],
@@ -90,7 +92,8 @@ class CustomRiotAPI:
             "playerAugment1": participant['playerAugment1'],
             "playerAugment2": participant['playerAugment2'],
             "playerAugment3": participant['playerAugment3'],
-            "goldEarned": participant['goldEarned']
+            "gold_earned": participant['goldEarned'],
+            "largestKillingSpree": participant['largestKillingSpree']
         }
         
     async def update_arena_games(self, user_key, user_name, puuid, lol_champions, latest_update=None, summoner_name=None, tagline=None):

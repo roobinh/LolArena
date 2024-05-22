@@ -1,4 +1,5 @@
 import os, json, random, discord, subprocess, requests
+import time
 from typing import List
 from dotenv import dotenv_values
 from discord import app_commands
@@ -41,6 +42,7 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 riot_api = CustomRiotAPI(RIOT_API_TOKEN)
+last_reroll_time = time.time()
 
 class TeamMemberSelectionView(discord.ui.View):
     def __init__(self, members):
@@ -171,12 +173,22 @@ class ChampionButtonView(View):
             style=discord.ButtonStyle.secondary
         )
         game_win_button.callback = self.game_win
-        self.add_item(game_win_button)
+        # self.add_item(game_win_button)
 
     async def generate_again(self, interaction: discord.Interaction):
-        self.reroll_count += 1
-        await generate_champions(interaction, self.reroll_count, self.max_rerolls, self.teammate_name)
+        global last_reroll_time
+        reroll_timeout = 2 # 2 seconds
+        current_time = time.time()
 
+        if current_time - last_reroll_time > reroll_timeout:
+            self.reroll_count += 1
+            await generate_champions(interaction, self.reroll_count, self.max_rerolls, self.teammate_name)
+            last_reroll_time = current_time
+        else:
+            await interaction.response.defer()
+            print("too quick")
+
+        
     async def next_game(self, interaction: discord.Interaction):
         await interaction.response.defer()
         await generate_champions(interaction, 0, 2, self.teammate_name, True)
@@ -464,21 +476,26 @@ async def get_wins_embed_and_view(interaction, target_user=None):
     arena_games = load_arena_games()
     summoner_name = arena_games.get(user_key, {}).get("summoner_name", None)
     summoner_tagline = arena_games.get(user_key, {}).get("summoner_tagline", None)
+    latest_update = arena_games.get(user_key, {}).get("latest_update", None)
 
     wins = get_wins_as_dict(arena_games, user_key)
     first_wins = get_first_wins_as_dict(wins)
-    
+    extra_info = ""
+
+    if summoner_name and summoner_tagline:
+        extra_info = f"\n\n_This is probably because of an recent update to the bot._"
+
     description = "\n".join([
         f"• **{game_details['champion']}** - First win with {game_details['teammate_name']} as {game_details['teammate_champion']} on {epoch_to_str(game_details['timestamp'])}"
         for game_details in first_wins
-    ]) if wins else f"No wins recorded. Click below to fetch all wins."
+    ]) if wins else f"No wins recorded. Click below to fetch all wins. {extra_info}"
 
     title_username = f"{summoner_name}#{summoner_tagline}" if summoner_name and summoner_tagline else user_name
     embed = discord.Embed(title=f"{title_username}'s Win List 👑", description=description, color=discord.Color.green())
 
     view = View()
-    latest_update = arena_games.get(user_key, {}).get("latest_update", None)
-    if not latest_update:
+    
+    if not summoner_name and summoner_tagline:
         # view.add_item(RemoveChampionView(user_key, interaction).children[0])
         # view.add_item(AddChampionView(user_key, interaction).children[0])
         view.add_item(UpdateChampionView(user_key, interaction, "Sync with Riot 🔁").children[0])
@@ -697,7 +714,7 @@ async def arena_stats_to_description(user_id):
         first_five_dict = dict(champion_count_sorted[:5])
         
         # Return as a formatted string
-        return '\n'.join(f"{champ}: {count} times" for champ, count in first_five_dict.items())
+        return '\n'.join(f"• **{champ}**: {count} times" for champ, count in first_five_dict.items())
 
     def get_average_place():
         if not stats:
@@ -725,11 +742,11 @@ async def arena_stats_to_description(user_id):
         total_games = len(placements)
         top_1 = sum(1 for p in placements if p == 1)
         top_4 = sum(1 for p in placements if p <= 4)
-        last_place = sum(1 for p in placements if p == len(stats))
+        last_place = sum(1 for p in placements if p == 8)
         return {
-            "top_1_percent": 100 * top_1 / total_games,
-            "top_4_percent": 100 * top_4 / total_games,
-            "last_place_percent": 100 * last_place / total_games
+            "top_1": top_1,
+            "top_4": top_4,
+            "last_place": last_place
         }
 
     def get_most_stat(stat_key):
@@ -745,40 +762,55 @@ async def arena_stats_to_description(user_id):
             return (max_value, max_champion)
         else:
             return (0, "No data")  # or any other default you'd prefer
-
+        
+    def get_most_ability_usage():
+        return max(
+            (sum(game['stats'].get(stat, 0) for stat in ['ability_1_used', 'ability_2_used', 'ability_3_used', 'ability_4_used']),
+            game['champion'],
+            max(('Q', game['stats'].get('ability_1_used', 0)),
+                ('W', game['stats'].get('ability_2_used', 0)),
+                ('E', game['stats'].get('ability_3_used', 0)),
+                ('R', game['stats'].get('ability_4_used', 0)), key=lambda x: x[1]))
+            for game in stats
+        )
+    
     # Building the description
     placement_stats = get_placement_stats()
     most_damage = get_most_stat('total_damage')
-    most_ability_usage = max((sum(game['stats'].get(stat, 0) for stat in ['ability_1_used', 'ability_2_used', 'ability_3_used', 'ability_4_used']), game['champion']) for game in stats)
+    total_usage, champion, (most_used_ability, count) = get_most_ability_usage()
     most_cc_duration = get_most_stat('cc_duration')
     most_gold = get_most_stat('gold_earned')
     highest_crit = get_most_stat('highest_crit')
+    largest_killing_spree = get_most_stat('largestKillingSpree')
+    total_heal = get_total_healing()
+    total_shield = get_total_shielding()
+    most_heal = get_most_stat('total_heal') 
 
     description_items = [
-        f"**Total games played**: {len(stats)}",
-        f"**Most played champions**: \n{get_most_played_champions()}",
-        "\n",
+        f"**Total games played**: {len(stats)} \n {get_most_played_champions()}",
+        "",
+        f"**Total #1**: {placement_stats['top_1']} ({(100 * placement_stats['top_1'] / len(stats)):.1f}%)",
+        f"**Total top 4**: {placement_stats['top_4']} ({(100 * placement_stats['top_4'] / len(stats)):.1f}%)",
+        f"**Total last place**: {placement_stats['last_place']} ({(100 * placement_stats['last_place'] / len(stats)):.1f}%)",
+        f"**Average placement**: {get_average_place():.1f}",
+        "",
         f"**Total K/D/A**: {get_total_kda()}",
-        f"**Total healing**: {get_total_healing()}",
-        f"**Total shielding**: {get_total_shielding()}",
-        f"**Total #1 (%)**: {placement_stats['top_1_percent']:.2f}%",
-        f"**Total top 4 (%)**: {placement_stats['top_4_percent']:.2f}%",
-        f"**Total last place (%)**: {placement_stats['last_place_percent']:.2f}%",
-        f"**Average placement**: {get_average_place():.2f}",
-        "\n",
-        f"**Most damage in one game**: {most_damage[1]} ({most_damage[0]})",
-        f"**Most ability usage in one game**: {most_ability_usage[1]} ({most_ability_usage[0]})",
-        f"**Most cc duration in one game**: {most_cc_duration[1]} ({most_cc_duration[0]})",
-        f"**Most gold earned in one game**: {most_gold[1]} ({most_gold[0]})",
-        f"**Highest crit (champ, amount)**: {highest_crit[1]} ({highest_crit[0]})"
+        f"**Total healing**: {total_heal} ({total_heal / len(stats):.1f} avg)",
+        f"**Total shielding**: {total_shield} ({total_shield / len(stats):.1f} avg)",
+        "",
+        f"**Largest killing spree**: {largest_killing_spree[1]} ({largest_killing_spree[0]} kills)",
+        f"**Most damage in one game**: {most_damage[1]} ({most_damage[0]} damage)",
+        f"**Most healing in one game**: {most_heal[1]} ({most_heal[0]} healing)",
+        f"**Most ability used in one game**: {champion} {most_used_ability} ({count} times)",
+        f"**Most cc duration in one game**: {most_cc_duration[1]} ({most_cc_duration[0]} seconds)",
+        f"**Most gold earned in one game**: {most_gold[1]} ({most_gold[0]} gold)",
+        f"**Highest crit**: {highest_crit[1]} ({highest_crit[0]} damage)"
     ]
     return "\n".join(description_items)
-
 
 async def get_stats_embed(user_id: str):
     arena_games = load_arena_games()
     summoner_name = arena_games.get(user_id, {}).get("summoner_name", None)
-    print(summoner_name)
     description = await arena_stats_to_description(user_id)
     if not description:
         return None
@@ -806,7 +838,7 @@ async def haswon(interaction: discord.Interaction, summoner_name: discord.Member
 
     embed = await get_stats_embed(user_id)
     if not embed:
-        await interaction.response.send_message(f"No games found for this user.", ephemeral=True)
+        await interaction.response.send_message(f"No games found for this user. Use `/wins` to update your wins.", ephemeral=True)
         return
     await interaction.response.send_message(embed=embed)
 
@@ -1017,8 +1049,18 @@ async def on_command_error(ctx, error):
     else:
         await ctx.send(f"An unexpected error occurred: {error}")
 
+def clear_wins():
+    arena_games = load_arena_games()
+    for user_id in arena_games:
+        arena_games[user_id]['arena_games'] = {}
+        arena_games[user_id]['latest_update'] = None
+    save_arena_games(arena_games)
+
 # Check github status
 github_status()
+
+# Clear wins every time program gets updated to match with the latest version
+clear_wins()
 
 # Start the program
 client.run(BOT_TOKEN)
