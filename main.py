@@ -151,6 +151,8 @@ class ChampionButtonView(View):
 
         # Reroll button
         remaining_rerolls = max_rerolls - reroll_count
+        if remaining_rerolls < 0:
+            remaining_rerolls = 0
         reroll_button = Button(
             label=f"Reroll ({remaining_rerolls})",
             style=discord.ButtonStyle.primary,
@@ -177,7 +179,7 @@ class ChampionButtonView(View):
 
     async def generate_again(self, interaction: discord.Interaction):
         global last_reroll_time
-        reroll_timeout = 2 # 2 seconds
+        reroll_timeout = 1 # 2 seconds
         current_time = time.time()
 
         if current_time - last_reroll_time > reroll_timeout:
@@ -350,7 +352,7 @@ class UpdateChampionView(View):
             if puuid:
                 latest_update = arena_games.get(user_key, {}).get("latest_update", None)
                 user_name = interaction.user.name
-                await riot_api.update_arena_games(user_key, user_name, puuid, LOL_CHAMPIONS, latest_update)
+                await riot_api.update_arena_games(interaction, user_key, user_name, puuid, LOL_CHAMPIONS, latest_update)
                 
                 # send new list to user message
                 status_message = "Win list updated ✅"
@@ -376,6 +378,41 @@ class SeeAllLeaderboardView(View):
         # You can add an acknowledgment message or update the original message here if needed
         await interaction.response.defer()  # Optionally respond to the interaction without sending a message
 
+class ChangeSummonerNameModal(Modal):
+    def __init__(self, user_id, ctx):
+        super().__init__(title="Change Your Summoner Name")
+        self.user_id = user_id
+        self.ctx = ctx
+        self.summoner_name_input = TextInput(label="New Summoner Name#Tagline", placeholder="e.g., Thebausffs#euw")
+        self.add_item(self.summoner_name_input)
+
+
+class SearchChampionModal(Modal):
+    def __init__(self, user_id, ctx):
+        super().__init__(title="Search Champion")
+        self.user_id = user_id
+        self.ctx = ctx
+        self.champion_input = TextInput(label="Enter Champion Name", placeholder="e.g., Ahri, Zed")
+        self.add_item(self.champion_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # Fetch the entered champion name and search in the champion list
+        input_champion = self.champion_input.value.strip()
+        await has_won_on_champion(interaction, input_champion)
+        return
+       
+class SearchChampionView(View):
+    def __init__(self, user_id, ctx):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.ctx = ctx
+        self.search_button = Button(label="Search Champion 🔍", style=discord.ButtonStyle.grey)
+        self.search_button.callback = self.search_champion_callback
+        self.add_item(self.search_button)
+
+    async def search_champion_callback(self, interaction: discord.Interaction):
+        modal = SearchChampionModal(self.user_id, self.ctx)
+        await interaction.response.send_modal(modal)
 
 class ChangeSummonerNameButton(Button):
     def __init__(self, user_id, ctx):
@@ -397,8 +434,8 @@ class ChangeSummonerNameModal(Modal):
         self.user_id = user_id
         self.ctx = ctx
         self.summoner_name_input = TextInput(label="New Summoner Name#Tagline", placeholder="e.g., Thebausffs#euw")
-        self.add_item(self.summoner_name_input)
 
+        self.add_item(self.summoner_name_input)
     async def on_submit(self, interaction: discord.Interaction):
         input_text = self.summoner_name_input.value.strip()
         summoner_name, _, tagline = input_text.partition('#')
@@ -420,7 +457,7 @@ async def update_arena_games(interaction: discord.Interaction, summoner_name: st
         await interaction.response.send_message(f"Updating champion wins for **{summoner_name}#{tagline}**. This process may take a few minutes as it's the first time. (approximately 5 minutes ⌛)")
         
         user_name = interaction.user.name
-        await riot_api.update_arena_games(user_key, user_name, puuid, LOL_CHAMPIONS, None, summoner_name, tagline)
+        await riot_api.update_arena_games(interaction, user_key, user_name, puuid, LOL_CHAMPIONS, None, summoner_name, tagline)
         embed, view = await get_wins_embed_and_view(interaction)
         status_message = "Win list synced with Riot Games ✅"
         await interaction.edit_original_response(content=status_message, embed=embed, view=view)
@@ -468,42 +505,58 @@ def get_unique_user_wins(arena_games, user_id):
     wins = get_wins_as_dict(arena_games, user_id)
     return list({win['champion'] for win in wins}) if wins else []
 
+
 async def get_wins_embed_and_view(interaction, target_user=None):
-    # If no target user is specified, use the user who initiated the interaction
+    # Determine which user's data to display
     user_key = str(target_user.id) if target_user else str(interaction.user.id)
     user_name = target_user.name if target_user else interaction.user.name
 
+    # Load the arena games from storage
     arena_games = load_arena_games()
-    summoner_name = arena_games.get(user_key, {}).get("summoner_name", None)
-    summoner_tagline = arena_games.get(user_key, {}).get("summoner_tagline", None)
-    latest_update = arena_games.get(user_key, {}).get("latest_update", None)
+    user_data = arena_games.get(user_key, {})
 
+    # Extract relevant user data
+    summoner_name = user_data.get("summoner_name", user_name)
+    summoner_tagline = user_data.get("summoner_tagline", "")
+    latest_update = user_data.get("latest_update", None)
+
+    # Get the wins from the arena games
     wins = get_wins_as_dict(arena_games, user_key)
     first_wins = get_first_wins_as_dict(wins)
-    extra_info = ""
-
-    if summoner_name and summoner_tagline:
-        extra_info = f"\n\n_This is probably because of an recent update to the bot._"
-
-    description = "\n".join([
-        f"• **{game_details['champion']}** - First win with {game_details['teammate_name']} as {game_details['teammate_champion']} on {epoch_to_str(game_details['timestamp'])}"
-        for game_details in first_wins
-    ]) if wins else f"No wins recorded. Click below to fetch all wins. {extra_info}"
-
-    title_username = f"{summoner_name}#{summoner_tagline}" if summoner_name and summoner_tagline else user_name
-    embed = discord.Embed(title=f"{title_username}'s Win List 👑", description=description, color=discord.Color.green())
-
-    view = View()
     
-    if not summoner_name and summoner_tagline:
-        # view.add_item(RemoveChampionView(user_key, interaction).children[0])
-        # view.add_item(AddChampionView(user_key, interaction).children[0])
-        view.add_item(UpdateChampionView(user_key, interaction, "Sync with Riot 🔁").children[0])
+    last_updated = epoch_to_str(latest_update) if latest_update else "Not updated"
+    extra_notice = ""
+    if summoner_name and summoner_tagline:
+        extra_notice = f"\n\n_The bot has likely been updated. Please click below to retrieve your wins again. \nAfter updating, remember to use the new /stats function. 😀_"
+
+    # Generate a description of the first wins
+    game_details_description = "\n".join([
+        f"• **{game['champion']}** - First win with {game['teammate_name']} as {game['teammate_champion']} on {epoch_to_str(game['timestamp'])}"
+        for game in first_wins
+    ]) if first_wins else "No recorded wins." + extra_notice
+
+    # Create a summary of total wins and the last update
+    if wins:
+        total_unique_wins = len(first_wins)
+        final_description = f"{game_details_description}\n\n **Total unique wins: {total_unique_wins}/60** \n_(Last Updated: {last_updated}_)"
     else:
+        final_description = game_details_description
+    # Generate the title of the embed using summoner information
+    title_username = f"{summoner_name}#{summoner_tagline}" if summoner_name and summoner_tagline else user_name
+    embed = discord.Embed(title=f"{title_username}'s Win List 👑", description=final_description, color=discord.Color.green())
+
+    # Create a view and add appropriate buttons
+    view = View()
+    if summoner_name and summoner_tagline:
         view.add_item(UpdateChampionView(user_key, interaction, "Update 🔁").children[0])
+        if wins and len(wins) > 0:
+            view.add_item(SearchChampionView(user_key, interaction).children[0])
         view.add_item(ChangeSummonerNameButton(user_key, interaction))
+    else:
+        view.add_item(UpdateChampionView(user_key, interaction, "Sync with Riot 🔁").children[0])
 
     return embed, view
+
 
 @tree.command(
     name="wins",
@@ -844,7 +897,7 @@ async def haswon(interaction: discord.Interaction, summoner_name: discord.Member
 
 async def hasWon(interaction: discord.Interaction, entered_champion: str):
     def normalize_name(name):
-        return name.lower().replace("'", "").replace(" ", "")
+        return name.lower().replace("'", "").replace(" ", "").replace(".", "")
 
     all_arena_games = load_arena_games()
     user_id = str(interaction.user.id)
@@ -854,13 +907,8 @@ async def hasWon(interaction: discord.Interaction, entered_champion: str):
     if not champion_name:
         return None, None
     return champion_name in unique_user_wins, champion_name
-   
-@tree.command(
-    name="haswon",
-    description="See if you have already won on a champion",
-)
-@app_commands.describe(champion="Name of the champion")
-async def haswon(interaction: discord.Interaction, champion: str = None):
+
+async def has_won_on_champion(interaction: discord.Interaction, champion: str = None):
     if champion:
         haswon, champ_name_normalized = await hasWon(interaction, champion)
         if haswon == None:
@@ -872,7 +920,15 @@ async def haswon(interaction: discord.Interaction, champion: str = None):
     else:
         await interaction.response.send_message(f"Please provide a champion name.", ephemeral=True)
 
-
+@tree.command(
+    name="haswon",
+    description="See if you have already won on a champion",
+)
+@app_commands.describe(champion="Name of the champion")
+async def haswon(interaction: discord.Interaction, champion: str = None):
+    await has_won_on_champion(interaction, champion)
+    return
+    
 async def generate_champions(interaction: discord.Interaction, reroll_count=0, max_rerolls=2, teammate_name=None, is_next_game=False):
     author = interaction.user.name 
     user_id = str(interaction.user.id)  
@@ -909,7 +965,7 @@ async def generate_champions(interaction: discord.Interaction, reroll_count=0, m
         teammate_champion = random.choice(available_for_teammate)
 
     def clean_name(name):
-        return name.lower().replace("'", "").replace(" ", "")
+        return name.lower().replace("'", "").replace(" ", "").replace(".", "")
 
     user_champion_url = f"https://blitz.gg/lol/champions/{clean_name(user_champion)}/arena"
     user_hyperlink = f"[{user_champion}]({user_champion_url})"
@@ -1059,8 +1115,9 @@ def clear_wins():
 # Check github status
 github_status()
 
-# Clear wins every time program gets updated to match with the latest version
-clear_wins()
+# Clear wins every time program gets updated to match with the latest version, except for development
+if not env.get('BOT_TOKEN_DEV'):
+    clear_wins()
 
 # Start the program
 client.run(BOT_TOKEN)

@@ -2,6 +2,7 @@ import aiohttp
 import asyncio
 import os, json
 import time
+import discord
 from riotwatcher import LolWatcher, ApiError
 
 # Helper function to load or initialize the wins data
@@ -96,7 +97,7 @@ class CustomRiotAPI:
             "largestKillingSpree": participant['largestKillingSpree']
         }
         
-    async def update_arena_games(self, user_key, user_name, puuid, lol_champions, latest_update=None, summoner_name=None, tagline=None):
+    async def update_arena_games(self, interaction: discord.Interaction, user_key, user_name, puuid, lol_champions, latest_update=None, summoner_name=None, tagline=None):
         def get_teammate_info(match_details, team_id, puuuid_owner):
             participants = match_details['info']['participants']
             for participant in participants:
