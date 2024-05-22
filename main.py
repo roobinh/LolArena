@@ -411,6 +411,9 @@ class SearchChampionView(View):
         self.add_item(self.search_button)
 
     async def search_champion_callback(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != str(self.user_id):
+            await interaction.response.send_message("You can only search your own win list. Use `/wins` to see your own win list.", ephemeral=True)
+            return
         modal = SearchChampionModal(self.user_id, self.ctx)
         await interaction.response.send_modal(modal)
 
