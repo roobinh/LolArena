@@ -117,7 +117,8 @@ class CustomRiotAPI:
         matches = []
         start = 0
         count = 10  # count per request
-        arena_start_date = latest_update or 1714521600000 # 1 May 2024, Release date Arena (God Title)
+        
+        arena_start_date = latest_update or 1740787261000 # 1 May 2025, New release date Arena (God Title)
         current_last_game = arena_start_date + 1
         
         while current_last_game > arena_start_date:
