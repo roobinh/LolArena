@@ -523,32 +523,39 @@ async def get_wins_embed_and_view(interaction, target_user=None):
     summoner_tagline = user_data.get("summoner_tagline", "")
     latest_update = user_data.get("latest_update", None)
 
-    # Get the wins from the arena games
+    # Get the wins from the arena games (all wins where place == 1)
     wins = get_wins_as_dict(arena_games, user_key)
     first_wins = get_first_wins_as_dict(wins)
     
+    # Calculate total win counts per champion
+    win_counts = {}
+    if wins:
+        for win in wins:
+            champ = win['champion']
+            win_counts[champ] = win_counts.get(champ, 0) + 1
+
     last_updated = epoch_to_str(latest_update) if latest_update else "Not updated"
     extra_notice = ""
     if summoner_name and summoner_tagline:
         extra_notice = f"\n\n_The bot has likely been updated. Please click below to retrieve your wins again. \nAfter updating, remember to use the new /stats function. 😀_"
 
-    # Generate a description of the first wins
+    # Build description including the total wins for each champion
     game_details_description = "\n".join([
-        f"• **{game['champion']}** - First win with {game['teammate_name']} as {game['teammate_champion']} on {epoch_to_str(game['timestamp'])}"
+        f"• **{game['champion']}** - First win with {game['teammate_name']} as {game['teammate_champion']} on {epoch_to_str(game['timestamp'])} (Total wins: {win_counts.get(game['champion'], 0)})"
         for game in first_wins
     ]) if first_wins else "No recorded wins." + extra_notice
 
-    # Create a summary of total wins and the last update
+    # Create a summary of total unique wins and last update
     if wins:
         total_unique_wins = len(first_wins)
         final_description = f"{game_details_description}\n\n **Total unique wins: {total_unique_wins}/60** \n_(Last Updated: {last_updated}_)"
     else:
         final_description = game_details_description
-    # Generate the title of the embed using summoner information
+
     title_username = f"{summoner_name}#{summoner_tagline}" if summoner_name and summoner_tagline else user_name
     embed = discord.Embed(title=f"{title_username}'s Win List 👑", description=final_description, color=discord.Color.green())
 
-    # Create a view and add appropriate buttons
+    # Build view with buttons
     view = View()
     if summoner_name and summoner_tagline:
         view.add_item(UpdateChampionView(user_key, interaction, "Update 🔁").children[0])
@@ -559,6 +566,7 @@ async def get_wins_embed_and_view(interaction, target_user=None):
         view.add_item(UpdateChampionView(user_key, interaction, "Sync with Riot 🔁").children[0])
 
     return embed, view
+
 
 
 @tree.command(
